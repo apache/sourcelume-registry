@@ -1,0 +1,54 @@
+# Sourcelume dev stack.
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This file does NOT define Apache Atlas itself. Atlas is built and run using
+# its own official tooling, vendored via ./setup.sh into ./vendor/atlas-docker/
+# (see README.md for the full reasoning: Atlas's own dev-support/atlas-docker
+# already handles a from-source build, backend choice (postgres/hbase), and
+# version pinning - duplicating that by hand here would just be a second copy
+# to keep in sync).
+#
+# What THIS file owns:
+#   - the shared `sourcelume-network` that Atlas's containers join once started
+#     (see README.md, "Joining the shared network")
+#   - any Sourcelume-specific local dev services (a local queue, a local cache)
+#     once sourcelume-registry-messaging / sourcelume-registry-cache have a
+#     chosen backend - see docs/architecture.md open questions.
+#
+# There are no Sourcelume services defined yet: the WiringSpike (and future
+# ingest-worker) currently run on the host via `mvn exec:java` and reach Atlas
+# at localhost, so nothing Sourcelume-side needs to be inside Docker yet.
+
+networks:
+  sourcelume-network:
+    name: sourcelume-network
+    driver: bridge
+
+services: {}
+
+# TODO: once a queue/cache backend is chosen, add local dev instances here, e.g.:
+#
+# services:
+#   kafka:
+#     image: apache/kafka:<pinned-version>   # confirm image + version before use
+#     networks: [sourcelume-network]
+#     ports: ["9092:9092"]
+#
+#   redis:
+#     image: redis:<pinned-version>
+#     networks: [sourcelume-network]
+#     ports: ["6379:6379"]

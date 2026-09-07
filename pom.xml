@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <!--
+
+        Licensed to the Apache Software Foundation (ASF) under one or more
+        contributor license agreements.  See the NOTICE file distributed with
+        this work for additional information regarding copyright ownership.
+        The ASF licenses this file to You under the Apache License, Version 2.0
+        (the "License"); you may not use this file except in compliance with
+        the License.  You may obtain a copy of the License at
+
+           http://www.apache.org/licenses/LICENSE-2.0
+
+        Unless required by applicable law or agreed to in writing, software
+        distributed under the License is distributed on an "AS IS" BASIS,
+        WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+        See the License for the specific language governing permissions and
+        limitations under the License.
+    -->
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.apache</groupId>
+        <artifactId>apache</artifactId>
+        <version>39</version>
+        <relativePath />
+    </parent>
+
+    <groupId>org.apache.sourcelume</groupId>
+    <artifactId>sourcelume-registry</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Apache Sourcelume Registry</name>
+    <description>Registry for Apache Sourcelume.</description>
+
+    <!--
+      STEEL THREAD SCOPE ONLY.
+      This parent currently lists only the two modules needed to prove that a locally-built
+      sourcelume-spec jar can be consumed by this project, and that this project can talk to
+      a running Apache Atlas instance and register the Sourcelume typedefs.
+
+      NOT included yet (see docs/architecture.md for the full design):
+        sourcelume-registry-common
+        sourcelume-registry-ingest-api
+        sourcelume-registry-messaging
+        sourcelume-registry-cache
+        sourcelume-registry-query-api
+        sourcelume-registry-export
+        sourcelume-registry-webapp-ingest
+        sourcelume-registry-webapp-query
+        sourcelume-registry-tests
+    -->
+    <modules>
+        <module>sourcelume-registry-typedefs</module>
+        <module>sourcelume-registry-ingest-worker</module>
+    </modules>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Dependency Versions -->
+        <atlas.version>2.5.0</atlas.version>
+        <jackson.version>2.12.7</jackson.version>
+        <sourcelume-spec.version>0.0.1-SNAPSHOT</sourcelume-spec.version>
+
+        <!-- Plugin Versions -->
+        <exec-maven-plugin.version>3.2.0</exec-maven-plugin.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.apache.atlas</groupId>
+                <artifactId>atlas-client-v2</artifactId>
+                <version>${atlas.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.atlas</groupId>
+                <artifactId>atlas-intg</artifactId>
+                <version>${atlas.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.sourcelume</groupId>
+                <artifactId>sourcelume-spec</artifactId>
+                <version>${sourcelume-spec.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.sourcelume</groupId>
+                <artifactId>sourcelume-registry-typedefs</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.15.0</version>
+                <configuration>
+                    <release>17</release>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

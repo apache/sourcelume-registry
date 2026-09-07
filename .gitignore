@@ -2,3 +2,14 @@
 .venv
 .claude/
 .idea/
+
+target/
+*.class
+
+# Local docker support
+dev-support/vendor/*
+!dev-support/vendor/.gitkeep
+
+
+# Allow Sourcelume's dev-support .env (contains only placeholders, no real secrets)
+!dev-support/.env
