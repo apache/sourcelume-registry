@@ -185,3 +185,45 @@ mvn -pl sourcelume-registry-ingest-worker exec:java \
   -Dexec.mainClass=org.apache.sourcelume.registry.ingest.worker.WiringSpike \
   -Dexec.args="http://127.0.0.1:21000"
 ```
+
+To Clean up from prior run:
+```bash
+curl -u admin:atlasR0cks! -X DELETE http://127.0.0.1:21000/api/atlas/v2/types/typedefs \
+  -H "Content-Type: application/json" \
+  -d @sourcelume-registry-typedefs/src/main/resources/models/sourcelume/sourcelume_model.json
+```
+
+Retrieve specific Entity def:
+```bash
+curl -s -u admin:atlasR0cks! \
+  http://localhost:21000/api/atlas/v2/types/typedefs | jq .
+```
+
+Retrieve all type defs:
+```bash
+curl -s -u admin:atlasR0cks! \
+  http://localhost:21000/api/atlas/v2/types/typedefs | jq .
+```
+
+Create instance directly:
+```bash
+curl -u admin:atlasR0cks! -X POST http://localhost:21000/api/atlas/v2/entity \
+  -H "Content-Type: application/json" \
+  -d '{
+    "entity": {
+      "typeName": "sourcelume_dataset",
+      "attributes": {
+        "name": "sample-dataset-1",
+        "qualifiedName": "sourcelume://datasets/sample-1",
+        "description": "First test Sourcelume dataset instance",
+        "sourceUri": "https://github.com/example/repo",
+        "licenseId": "Apache-2.0"
+      }
+    }
+  }'
+```
+
+You should get something like:
+```text
+{"mutatedEntities":{"CREATE":[{"typeName":"sourcelume_dataset","attributes":{"owner":"","qualifiedName":"sourcelume://datasets/sample-1","name":"sample-dataset-1","description":"First test Sourcelume dataset instance"},"guid":"840025b7-d5ec-43da-9a32-4bdd9db03f4a","status":"ACTIVE","displayText":"sample-dataset-1","classificationNames":[],"classifications":[],"meaningNames":[],"meanings":[],"isIncomplete":false,"labels":[]}]},"guidAssignments":{"-776638218186579":"840025b7-d5ec-43da-9a32-4bdd9db03f4a"}}% 
+```
