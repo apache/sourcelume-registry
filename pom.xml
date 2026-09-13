@@ -44,16 +44,25 @@
       sourcelume-spec jar can be consumed by this project, and that this project can talk to
       a running Apache Atlas instance and register the Sourcelume typedefs.
 
-      NOT included yet (see docs/architecture.md for the full design):
+      NOT included yet (see docs/architecture.md for the full design - library modules
+      first, then the thin app-* Spring Boot runners):
         sourcelume-registry-common
-        sourcelume-registry-ingest-api
+        sourcelume-registry-atlas-adapter   (the ONLY module allowed to use atlas-client-v2)
+        sourcelume-registry-atlas-rest      (read-only Atlas access for the query path)
         sourcelume-registry-messaging
+        sourcelume-registry-ingest-api
         sourcelume-registry-cache
         sourcelume-registry-query-api
         sourcelume-registry-export
-        sourcelume-registry-webapp-ingest
-        sourcelume-registry-webapp-query
+        sourcelume-registry-app-ingest
+        sourcelume-registry-app-worker
+        sourcelume-registry-app-query
+        sourcelume-registry-app-export
         sourcelume-registry-tests
+
+      Also not yet done (docs/architecture.md "Dependency management"): importing the
+      spring-boot-dependencies BOM below. Once it is imported it owns the Jackson version
+      and the hand-pinned jackson.version property here should be deleted, not raised.
     -->
     <modules>
         <module>sourcelume-registry-typedefs</module>

@@ -21,8 +21,17 @@ no queue, no REST/GraphQL). Its only job is to prove three pieces of wiring conn
 - `sourcelume-registry-ingest-worker` — a single runnable class, `WiringSpike`,
   that performs the four proof steps above and exits.
 
-Everything else from the full architecture (`ingest-api`, `messaging`, `cache`,
-`query-api`, `export`, the webapps) is intentionally left out of this thread.
+Everything else from the full architecture (`common`, `atlas-adapter`, `atlas-rest`,
+`messaging`, `ingest-api`, `cache`, `query-api`, `export`, and the `app-*` Spring Boot
+runners) is intentionally left out of this thread. See [docs/architecture.md](docs/architecture.md)
+for the full module design and [docs/deployment.md](docs/deployment.md) for how those
+runners are meant to be deployed.
+
+One design rule worth knowing before you touch this module: `atlas-client-v2` is
+being confined to a single adapter module and kept off the query/web path entirely
+(see [The Atlas access boundary](docs/architecture.md#the-atlas-access-boundary)).
+`WiringSpike` uses `AtlasClientV2` directly today; that code is what moves into
+`sourcelume-registry-atlas-adapter` first.
 
 ## Assumptions to confirm before this will actually build
 
@@ -37,7 +46,8 @@ These are marked `TODO` inline in the POMs and Java source, but the important on
   package its context/schema files as classpath resources yet, this step will need
   a different approach (e.g. reading from a published schema artifact instead).
 - **Target Atlas version.** `atlas.version` in the parent POM is a placeholder
-  (`2.5.0`). This is still an open decision per the Registry's architecture doc.
+  (`2.5.0`) and still an open decision - see
+  [architecture.md, open question 8](docs/architecture.md#8-target-atlas-version).
 - **`AtlasClientV2` constructor/API shape.** Written from the well-known Atlas
   client usage pattern, but not compiled against a real Atlas dependency in this
   environment — verify against whichever Atlas version you land on.
