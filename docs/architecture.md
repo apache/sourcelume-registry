@@ -419,25 +419,23 @@ it sounds; see [Open question 6](#6-what-is-actually-cacheable-and-how-does-a-ca
 
 What exists in the repo right now, as distinct from what is designed above:
 
-- `sourcelume-registry-typedefs` — one minimal entity type,
-  `sourcelume_dataset`.
-- `sourcelume-registry-ingest-worker` — a throwaway `WiringSpike` proving that a
-  locally-built `sourcelume-spec` jar can be depended on, that the typedefs load
-  and are well-formed, and that this project can register them against a running
-  Atlas instance. It talks to `AtlasClientV2` directly, which is exactly the code
-  that D-002 moves into `atlas-adapter`.
-- `dev-support/` — the local Atlas dev stack (vendors Atlas's own
-  `atlas-docker` tooling at a pinned ref). This is the topology every
-  contributor actually needs; see
-  [deployment.md §2](deployment.md#2-local-development-topology).
-- Root `pom.xml` — no Spring Boot BOM yet, hand-pinned Jackson, and a module
-  list covering only `typedefs` and `ingest-worker`.
+- `sourcelume-registry-typedefs` — minimal entity type definitions (`sourcelume_dataset`).
+- `sourcelume-registry-common` — shared DTOs (`ProvenanceRecordDto`, `CreatorDto`, `CustodyEventDto`, `LicenseHistoryDto`, `SourcelumeDatasetDto`), domain exceptions, and `SpecResourceLoader`.
+- `sourcelume-registry-atlas-adapter` — quarantines `atlas-client-v2` and `atlas-intg` behind the `AtlasAdapter` domain interface (enforcing D-002) with Spring Boot auto-configuration.
+- `sourcelume-registry-ingest-worker` — Spring Boot 3 worker runner, Actuator health indicator, and `AtlasBootstrapRunner` verifying spec resources and registering typedefs with Atlas.
+- `dev-support/` and `docker-compose.yml` — local Atlas dev stack and worker container composition over `sourcelume-network`.
+- Root `pom.xml` — imports `spring-boot-dependencies:3.3.5` BOM and configures dependency exclusions.
 
-Nothing else in the module tables exists yet. First implementation steps, in
-dependency order: extract `atlas-adapter` out of the spike (with the exclusion
-set and enforcer rules in place, since retrofitting them is harder than starting
-with them), then `common`, `messaging`, `app-ingest`, `app-worker`, then
-`atlas-rest` + `query-api` + `app-query`.
+### POC Implementation Roadmap
+
+1. **Step 1 (Completed):** Extract `sourcelume-registry-common` and `sourcelume-registry-atlas-adapter` to isolate Atlas SDK dependencies from the rest of the application codebase.
+2. **Step 2 (Next Step — End-to-End Async Ingest):**
+   - **`sourcelume-registry-messaging`**: Kafka producer and consumer abstractions using Spring Kafka (`KafkaTemplate`, `@KafkaListener`), topic configuration (e.g. `sourcelume.ingest.v1`), serialization, and DLT wiring.
+   - **`sourcelume-registry-app-ingest` (or `ingest-api`)**: Lightweight, stateless public HTTP REST endpoint (port 8080) for receiving provenance records, performing fast structural validation, publishing to Kafka, and immediately returning HTTP 202 (Accepted) with an ingest tracking ID.
+   - **Local Event Bus**: Add a single-broker KRaft Kafka container to `docker-compose.yml` on `sourcelume-network` so `app-ingest` and `ingest-worker` communicate asynchronously over the event bus (`Client (HTTP POST) -> app-ingest -> Kafka -> ingest-worker -> Atlas`).
+3. **Step 3 (Planned — Read/Query Slice):**
+   - **`sourcelume-registry-atlas-rest`**: Read-only client using Spring's `RestClient` directly against Atlas REST API endpoints with hand-written DTOs (zero Atlas client SDK dependencies).
+   - **`sourcelume-registry-app-query`**: Public query endpoint (REST / GraphQL) backed by Caffeine look-aside cache (`sourcelume-registry-cache`).
 
 ## Open questions
 

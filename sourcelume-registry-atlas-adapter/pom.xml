@@ -4,7 +4,6 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
     <!--
-
         Licensed to the Apache Software Foundation (ASF) under one or more
         contributor license agreements.  See the NOTICE file distributed with
         this work for additional information regarding copyright ownership.
@@ -29,17 +28,13 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>sourcelume-registry-ingest-worker</artifactId>
-    <name>Apache Sourcelume Registry - Ingest Worker</name>
+    <artifactId>sourcelume-registry-atlas-adapter</artifactId>
+    <name>Apache Sourcelume Registry - Atlas Adapter</name>
     <packaging>jar</packaging>
 
     <description>
-        STEEL THREAD ONLY. Proves that this module can (a) resolve and read a resource bundled in
-        the locally-built sourcelume-spec jar, (b) load the Sourcelume Atlas typedefs bundled in
-        sourcelume-registry-typedefs, and (c) register them against a running Apache Atlas instance.
-
-        Does NOT yet implement: queue consumption, signature verification against sourcelume-attest,
-        or schema/SHACL validation against sourcelume-spec.
+        Encapsulates Apache Atlas SDK (atlas-client-v2, atlas-intg) interactions behind clean
+        Sourcelume domain interfaces. Quarantines legacy Jersey 1.x and Hadoop transitives.
     </description>
 
     <dependencies>
@@ -52,28 +47,26 @@
             <artifactId>sourcelume-registry-typedefs</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.apache.sourcelume</groupId>
-            <artifactId>sourcelume-registry-atlas-adapter</artifactId>
+            <groupId>org.apache.atlas</groupId>
+            <artifactId>atlas-client-v2</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.apache.sourcelume</groupId>
-            <artifactId>sourcelume-spec</artifactId>
+            <groupId>org.apache.atlas</groupId>
+            <artifactId>atlas-intg</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.jaxrs</groupId>
+            <artifactId>jackson-jaxrs-json-provider</artifactId>
+            <version>2.12.7</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.jaxrs</groupId>
+            <artifactId>jackson-jaxrs-base</artifactId>
+            <version>2.12.7</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.micrometer</groupId>
-            <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -86,21 +79,5 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>repackage</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
 
 </project>

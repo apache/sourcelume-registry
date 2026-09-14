@@ -14,71 +14,44 @@ no queue, no REST/GraphQL). Its only job is to prove three pieces of wiring conn
 
 - `sourcelume-registry-typedefs` — one minimal entity type, `sourcelume_dataset`,
   extending Atlas's built-in `DataSet` type, defined in a single
-  `models/sourcelume/sourcelume_model.json` file loaded via one atomic
-  `createAtlasTypeDefs` call. Not the full Sourcelume type set. (Atlas's own
-  thousand-bucket directory numbering, e.g. `1000-Hadoop`, was deliberately not
-  used here - see the module's `pom.xml` for why it solves a different problem.)
-- `sourcelume-registry-ingest-worker` — a single runnable class, `WiringSpike`,
-  that performs the four proof steps above and exits.
+  `models/sourcelume/sourcelume_model.json` file loaded via atomic
+  `createAtlasTypeDefs` call.
+- `sourcelume-registry-common` — shared DTOs (`ProvenanceRecordDto`, `CreatorDto`, `CustodyEventDto`, `LicenseHistoryDto`, `SourcelumeDatasetDto`), domain exceptions, and schema resource loaders.
+- `sourcelume-registry-atlas-adapter` — encapsulates `AtlasClientV2` interactions behind the `AtlasAdapter` domain interface (enforcing architecture decision D-002) with Spring Boot auto-configuration.
+- `sourcelume-registry-ingest-worker` — Spring Boot 3 worker runner, Actuator health indicator, and `AtlasBootstrapRunner` verifying spec resources and registering typedefs with Atlas.
 
-Everything else from the full architecture (`common`, `atlas-adapter`, `atlas-rest`,
-`messaging`, `ingest-api`, `cache`, `query-api`, `export`, and the `app-*` Spring Boot
-runners) is intentionally left out of this thread. See [docs/architecture.md](docs/architecture.md)
-for the full module design and [docs/deployment.md](docs/deployment.md) for how those
-runners are meant to be deployed.
+See [docs/architecture.md](docs/architecture.md) for the full module design and [docs/deployment.md](docs/deployment.md) for how runners are deployed.
 
-One design rule worth knowing before you touch this module: `atlas-client-v2` is
-being confined to a single adapter module and kept off the query/web path entirely
-(see [The Atlas access boundary](docs/architecture.md#the-atlas-access-boundary)).
-`WiringSpike` uses `AtlasClientV2` directly today; that code is what moves into
-`sourcelume-registry-atlas-adapter` first.
+## Running it
 
-## Assumptions to confirm before this will actually build
-
-These are marked `TODO` inline in the POMs and Java source, but the important ones:
-
-- **`sourcelume-spec` Maven coordinates.** The parent POM assumes
-  `org.apache.sourcelume:sourcelume-spec:0.0.1-SNAPSHOT`, installed to your local
-  `~/.m2` via `mvn install` in the `sourcelume-spec` repo. Update if the real
-  coordinates differ.
-- **The resource path inside that jar.** `WiringSpike` assumes it can find
-  `context/v0.0.1/sourcelume.jsonld` on the classpath. If `sourcelume-spec` doesn't
-  package its context/schema files as classpath resources yet, this step will need
-  a different approach (e.g. reading from a published schema artifact instead).
-- **Target Atlas version.** `atlas.version` in the parent POM is a placeholder
-  (`2.5.0`) and still an open decision - see
-  [architecture.md, open question 8](docs/architecture.md#8-target-atlas-version).
-- **`AtlasClientV2` constructor/API shape.** Written from the well-known Atlas
-  client usage pattern, but not compiled against a real Atlas dependency in this
-  environment — verify against whichever Atlas version you land on.
-
-## Running it (once the above are confirmed)
+### Option 1: Running Spring Boot on Host
 
 ```bash
-# from the sourcelume-spec repo, so it lands in your local Maven repo
-mvn install
+# from this repository
+mvn clean package
 
-# from this steel-thread repo
-mvn install
-mvn -pl sourcelume-registry-ingest-worker exec:java \
-  -Dexec.mainClass=org.apache.sourcelume.registry.ingest.worker.WiringSpike \
-  -Dexec.args="http://localhost:21000"
+# Run Spring Boot ingest worker pointing to local Atlas
+export SOURCELUME_ATLAS_URL=http://localhost:21000
+mvn -pl sourcelume-registry-ingest-worker spring-boot:run
+```
+
+### Option 2: Running with Docker Compose
+
+```bash
+# 1. Build project artifacts (creates target/*.jar)
+mvn clean package
+
+# 2. Build and run worker container
+docker compose build
+docker compose up
 ```
 
 Point `SOURCELUME_ATLAS_URL` / `SOURCELUME_ATLAS_USER` / `SOURCELUME_ATLAS_PASSWORD`
-env vars (or the first CLI arg for the URL) at a running Atlas instance — a local
-`docker-compose` Atlas is fine for this purpose.
+env vars at a running Atlas instance — see `dev-support/README.md` for standing up the local Atlas backend.
 
-## What "success" looks like
+## Local Dev Support (Apache Atlas)
 
-The process prints four lines confirming each proof step, ending with:
-
-```
-Steel thread complete: sourcelume-spec jar resource read, Sourcelume typedefs loaded, and Atlas accepted them.
-```
-
-If it gets that far, the wiring described in the Registry's high-level architecture is
-real, not just a diagram.
+See [`dev-support/README.md`](dev-support/README.md) for complete instructions on standing up the local Apache Atlas backend using Docker Compose and testing the Spring Boot runtime.
 
 
 ## Overview

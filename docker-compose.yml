@@ -1,4 +1,3 @@
-# Sourcelume local dev stack: Spring Boot services & local dev environment.
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
@@ -15,9 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Apache Atlas backend is stood up via dev-support/vendor/atlas-docker (see README.md).
-# This compose file runs the Sourcelume Spring Boot ingest worker container connected to Atlas
-# via the shared `sourcelume-network`.
 
 networks:
   sourcelume-network:
@@ -27,7 +23,7 @@ networks:
 services:
   worker:
     build:
-      context: ..
+      context: .
       dockerfile: sourcelume-registry-ingest-worker/Dockerfile
     image: apache/sourcelume-registry-app-worker:0.0.1
     container_name: sourcelume-worker
