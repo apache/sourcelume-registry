@@ -61,9 +61,17 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Dependency Versions -->
-        <quarkus.version>3.33.0</quarkus.version>
+        <quarkus.version>3.33.3</quarkus.version>
         <jackson.version>2.18.0</jackson.version>
         <sourcelume-spec.version>0.0.1-SNAPSHOT</sourcelume-spec.version>
+
+        <!-- Mockito self-attach is deprecated on Java 21+ and will break on
+             future JDKs. Configure the Byte Buddy agent explicitly via
+             -javaagent in Surefire so tests stay stable across JDK bumps.
+             See Calvin's dev-list note (Sept 2026).
+             The version matches what Quarkus 3.33.x pulls (byte-buddy-agent 1.17.8).
+             Override with -DbyteBuddyAgentPath=... if your local cache layout differs. -->
+        <byteBuddyAgentPath>${settings.localRepository}/net/bytebuddy/byte-buddy-agent/1.17.8/byte-buddy-agent-1.17.8.jar</byteBuddyAgentPath>
 
         <!-- Plugin Versions -->
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
@@ -73,7 +81,7 @@
         <dependencies>
             <!-- Quarkus BOM owns the Quarkus + Jakarta + Jackson versions -->
             <dependency>
-                <groupId>io.quarkus.platform</groupId>
+                <groupId>io.quarkus</groupId>
                 <artifactId>quarkus-bom</artifactId>
                 <version>${quarkus.version}</version>
                 <type>pom</type>
@@ -104,7 +112,7 @@
                 <plugin>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <configuration>
-                        <argLine>-javaagent:${settings.localRepository}/net/bytebuddy/byte-buddy-agent/1.15.11/byte-buddy-agent-1.15.11.jar</argLine>
+                        <argLine>-javaagent:${byteBuddyAgentPath}</argLine>
                     </configuration>
                 </plugin>
             </plugins>
