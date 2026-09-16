@@ -15,19 +15,20 @@
 # limitations under the License.
 #
 
-FROM eclipse-temurin:17-jre
-WORKDIR /app
+# Quarkus JVM-mode container image.
+# Quarkus builds the runnable jar under target/quarkus-app/; the container just needs
+# a JRE and the lib dir. This is the simplest JVM-mode Dockerfile — Quarkus also
+# supports building a native image (GraalVM) which would shrink this further, but
+# for the spike comparison we keep it JVM-mode to match the Spring spike's footprint.
 
-# Install curl for Actuator health checks
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+FROM eclipse-temurin:21-jre
 
-# Copy repackaged Spring Boot executable jar
-COPY sourcelume-registry-ingest-worker/target/sourcelume-registry-ingest-worker-*.jar /app/app.jar
+WORKDIR /work
 
-ENV JAVA_TOOL_OPTIONS="-XX:+UseG1GC -XX:MaxRAMPercentage=75.0"
-EXPOSE 8082 9001
+COPY target/quarkus-app /work/quarkus-app
 
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=30s \
-  CMD curl -fsS http://localhost:9001/actuator/health/liveness || exit 1
+ENV JAVA_OPTS="-XX:+UseG1GC -XX:MaxRAMPercentage=75.0"
 
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+EXPOSE 8082
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /work/quarkus-app/quarkus-run.jar"]

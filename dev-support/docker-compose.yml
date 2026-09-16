@@ -1,4 +1,4 @@
-# Sourcelume local dev stack: Spring Boot services & local dev environment.
+# Sourcelume local dev stack: Quarkus ingest worker & local dev environment.
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
@@ -16,7 +16,7 @@
 # limitations under the License.
 #
 # Apache Atlas backend is stood up via dev-support/vendor/atlas-docker (see README.md).
-# This compose file runs the Sourcelume Spring Boot ingest worker container connected to Atlas
+# This compose file runs the Sourcelume Quarkus ingest worker container connected to Atlas
 # via the shared `sourcelume-network`.
 
 networks:
@@ -29,24 +29,21 @@ services:
     build:
       context: ..
       dockerfile: sourcelume-registry-ingest-worker/Dockerfile
-    image: apache/sourcelume-registry-app-worker:0.0.1
-    container_name: sourcelume-worker
+    image: apache/sourcelume-registry-app-worker-quarkus:0.0.1
+    container_name: sourcelume-worker-quarkus
     environment:
       SOURCELUME_ATLAS_URL: ${SOURCELUME_ATLAS_URL:-http://atlas:21000}
       SOURCELUME_ATLAS_USER: ${SOURCELUME_ATLAS_USER:-admin}
       SOURCELUME_ATLAS_PASSWORD: ${SOURCELUME_ATLAS_PASSWORD:-atlasR0cks!}
       SOURCELUME_ATLAS_PASSWORD_FILE: ${SOURCELUME_ATLAS_PASSWORD_FILE:-}
-      MANAGEMENT_SERVER_PORT: "9001"
-      MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
-      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus"
-      JAVA_TOOL_OPTIONS: "-XX:+UseG1GC -XX:MaxRAMPercentage=75.0"
+      SOURCELUME_ATLAS_BOOTSTRAP_ON_STARTUP: "true"
+      JAVA_OPTS: "-XX:+UseG1GC -XX:MaxRAMPercentage=75.0"
     ports:
       - "8082:8082"
-      - "9001:9001"
     networks:
       - sourcelume-network
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:9001/actuator/health/liveness"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/q/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 3

@@ -2,33 +2,38 @@
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    (the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied
+    See the License for the specific language governing permissions and
+    limitations under the License.
+    */
 package org.apache.sourcelume.registry.ingest.worker.service;
 
-import org.apache.atlas.model.typedef.AtlasTypesDef;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter;
 import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
 import org.apache.sourcelume.registry.common.spec.SpecResourceLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
 
 /**
  * Service responsible for validating spec resources and registering Sourcelume typedefs with Atlas
  * via the AtlasAdapter.
+ *
+ * <p>Quarkus/CDI equivalent of the Spring {@code @Service} used in the Spring spike.
+ * Uses the backend-neutral {@link AtlasAdapter} interface and {@link AtlasAdapter.TypeDefinitionModel}
+ * instead of Atlas-specific {@code AtlasTypesDef} — the Atlas wire shape lives in the adapter
+ * implementation only.
  */
-@Service
+@ApplicationScoped
 public class AtlasBootstrapService {
 
     private static final Logger log = LoggerFactory.getLogger(AtlasBootstrapService.class);
@@ -36,8 +41,8 @@ public class AtlasBootstrapService {
     private final SourcelumeAtlasProperties properties;
     private final AtlasAdapter atlasAdapter;
 
-    public AtlasBootstrapService(SourcelumeAtlasProperties properties,
-                                 AtlasAdapter atlasAdapter) {
+    @Inject
+    public AtlasBootstrapService(SourcelumeAtlasProperties properties, AtlasAdapter atlasAdapter) {
         this.properties = properties;
         this.atlasAdapter = atlasAdapter;
     }
@@ -46,21 +51,20 @@ public class AtlasBootstrapService {
      * Reads the spec context from classpath to verify spec jar dependency.
      */
     public byte[] readSpecContext() {
-        String resourcePath = properties.getSpecContextResource();
+        String resourcePath = properties.specContextResource();
         byte[] bytes = SpecResourceLoader.loadResourceBytes(resourcePath);
         log.info("Successfully read {} bytes from spec context resource: {}", bytes.length, resourcePath);
         return bytes;
     }
 
     /**
-     * Loads the Sourcelume Atlas typedef definitions from the bundled JSON resource.
+     * Loads the Sourcelume typedef definitions from the bundled JSON resource.
      */
-    public AtlasTypesDef loadTypeDefs() {
-        String resourcePath = properties.getTypedefsResource();
-        AtlasTypesDef typesDef = atlasAdapter.loadTypeDefs(resourcePath);
-        log.info("Loaded {} entity def(s) from {}",
-                typesDef.getEntityDefs() != null ? typesDef.getEntityDefs().size() : 0, resourcePath);
-        return typesDef;
+    public AtlasAdapter.TypeDefinitionModel loadTypeDefs() {
+        String resourcePath = properties.typedefsResource();
+        AtlasAdapter.TypeDefinitionModel typeDefs = atlasAdapter.loadTypeDefs(resourcePath);
+        log.info("Loaded {} entity def(s) from {}", typeDefs.getEntityDefCount(), resourcePath);
+        return typeDefs;
     }
 
     /**
@@ -69,8 +73,8 @@ public class AtlasBootstrapService {
     public boolean bootstrap() {
         try {
             readSpecContext();
-            AtlasTypesDef typesDef = loadTypeDefs();
-            return registerTypeDefs(typesDef);
+            AtlasAdapter.TypeDefinitionModel typeDefs = loadTypeDefs();
+            return registerTypeDefs(typeDefs);
         } catch (Exception e) {
             log.error("Failed to bootstrap Sourcelume typedefs into Atlas: {}", e.getMessage(), e);
             return false;
@@ -80,12 +84,11 @@ public class AtlasBootstrapService {
     /**
      * Registers typedefs with Atlas via AtlasAdapter.
      */
-    public boolean registerTypeDefs(AtlasTypesDef typesDef) {
+    public boolean registerTypeDefs(AtlasAdapter.TypeDefinitionModel typeDefs) {
         try {
-            log.info("Attempting to register Sourcelume typedefs with Atlas at {}", properties.getUrl());
-            AtlasTypesDef createdOrUpdated = atlasAdapter.registerOrUpdateTypeDefs(typesDef);
-            int entityCount = createdOrUpdated.getEntityDefs() != null ? createdOrUpdated.getEntityDefs().size() : 0;
-            log.info("Successfully registered/updated Sourcelume typedefs with Atlas. Entity types: {}", entityCount);
+            log.info("Attempting to register Sourcelume typedefs with Atlas at {}", properties.url());
+            AtlasAdapter.TypeDefinitionModel createdOrUpdated = atlasAdapter.registerOrUpdateTypeDefs(typeDefs);
+            log.info("Successfully registered/updated Sourcelume typedefs with Atlas. Entity types: {}", createdOrUpdated.getEntityDefCount());
             return true;
         } catch (Exception e) {
             log.error("Failed to register/update typedefs in Atlas: {}", e.getMessage());

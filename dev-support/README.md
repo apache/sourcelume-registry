@@ -1,6 +1,6 @@
-# Sourcelume Dev Support: Apache Atlas & Spring Boot Stack
+# Sourcelume Dev Support: Apache Atlas & Quarkus Stack
 
-This directory provides local developer infrastructure to stand up an Apache Atlas backend and develop/test the Sourcelume Spring Boot Registry against it.
+This directory provides local developer infrastructure to stand up an Apache Atlas backend and develop/test the Sourcelume Quarkus Registry against it.
 
 ---
 
@@ -8,7 +8,7 @@ This directory provides local developer infrastructure to stand up an Apache Atl
 
 The local development environment consists of:
 1. **Apache Atlas Backend**: An official Apache Atlas 2.5.0 container stack running with the PostgreSQL backend on port `21000`.
-2. **Sourcelume Spring Boot Services**: Spring Boot applications (such as `sourcelume-registry-ingest-worker`) that connect to Atlas, register typedefs on startup, and expose Actuator health/metrics endpoints on management port `9001`.
+2. **Sourcelume Quarkus Services**: Quarkus applications (such as `sourcelume-registry-ingest-worker`) that connect to Atlas, register typedefs on startup, and expose SmallRye Health readiness/liveness probes at `/q/health/{ready,live}` on port `8082`.
 3. **Shared Network**: A Docker bridge network named `sourcelume-network` connecting the Atlas containers and Sourcelume services.
 
 ---
@@ -71,9 +71,9 @@ docker network connect sourcelume-network "${ATLAS_CONTAINER}" || true
 
 ---
 
-### Running & Testing the Spring Boot Runtime
+### Running & Testing the Quarkus Runtime
 
-You can run and test the Sourcelume Spring Boot runtime using either **Docker Compose** or directly on your **Host/IDE**.
+You can run and test the Sourcelume Quarkus runtime using either **Docker Compose** or directly on your **Host/IDE**.
 
 #### Option A: Run via Docker Compose (Recommended for Container Validation)
 
@@ -98,7 +98,7 @@ export SOURCELUME_ATLAS_URL=http://localhost:21000
 export SOURCELUME_ATLAS_USER=admin
 export SOURCELUME_ATLAS_PASSWORD=atlasR0cks!
 
-# Run the Spring Boot application
+# Run the Quarkus application
 mvn -pl sourcelume-registry-ingest-worker spring-boot:run
 ```
 
@@ -106,13 +106,13 @@ mvn -pl sourcelume-registry-ingest-worker spring-boot:run
 
 ### Testing & Verification Workflows
 
-#### 1. Spring Boot Actuator Health & Probes
+#### 1. SmallRye Health Probes
 
-The Spring Boot runtime exposes Actuator endpoints on management port `9001`:
+The Quarkus runtime exposes SmallRye Health probes at `/q/health/{ready,live}` on port `8082`:
 
 - **Overall Health (including Atlas connectivity)**:
   ```bash
-  curl -s http://localhost:9001/actuator/health | jq .
+  curl -s http://localhost:8082/q/health | jq .
   ```
   Expected output includes `status: "UP"` with the `atlas` health component:
   ```json
@@ -138,13 +138,13 @@ The Spring Boot runtime exposes Actuator endpoints on management port `9001`:
 
 - **Kubernetes Liveness and Readiness Probes**:
   ```bash
-  curl -s http://localhost:9001/actuator/health/liveness
-  curl -s http://localhost:9001/actuator/health/readiness
+  curl -s http://localhost:8082/q/health/liveness
+  curl -s http://localhost:8082/q/health/readiness
   ```
 
 - **Prometheus Metrics**:
   ```bash
-  curl -s http://localhost:9001/actuator/prometheus
+  curl -s http://localhost:8082/q/metrics
   ```
 
 #### 2. Typedef Bootstrap Verification
@@ -189,7 +189,7 @@ On startup, `sourcelume-registry-ingest-worker` automatically registers `sourcel
 
 #### 4. Automated Tests
 
-Run the full automated test suite (unit tests, validation tests, and Spring Boot context tests):
+Run the full automated test suite (unit tests, validation tests, and Quarkus context tests):
 ```bash
 mvn clean verify
 ```

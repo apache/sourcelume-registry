@@ -2,92 +2,93 @@
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    (the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied
+    See the License for the specific language governing permissions and
+    limitations under the License.
+    */
 package org.apache.sourcelume.registry.ingest.worker;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.atlas.AtlasClientV2;
-import org.apache.atlas.model.typedef.AtlasTypesDef;
+import io.quarkus.runtime.Quarkus;
 import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter;
-import org.apache.sourcelume.registry.atlas.adapter.DefaultAtlasAdapter;
 import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
 import org.apache.sourcelume.registry.common.spec.SpecResourceLoader;
 
 /**
- * Steel thread for the Sourcelume Registry.
+ * Steel thread for the Sourcelume Registry (Quarkus spike).
  *
- * <p>Proves four pieces of wiring connect:
+ * <p>Runnable proof that the four pieces of wiring connect, mirroring Jamie's
+ * WiringSpike from the Spring spike branch but using the Quarkus + thin REST
+ * client stack:
+ *
  * <ol>
- *   <li>Resolves spec resource via SpecResourceLoader in sourcelume-registry-common.</li>
- *   <li>Loads typedefs from sourcelume-registry-typedefs via AtlasAdapter.</li>
- *   <li>Constructs Atlas adapter connection.</li>
- *   <li>Registers typedefs against Atlas instance.</li>
+ *   <li>This module can resolve a resource bundled inside the locally-built
+ *       {@code sourcelume-spec} jar (proves the spec-jar dependency is real).</li>
+ *   <li>This module can load the Sourcelume typedefs bundled in
+ *       {@code sourcelume-registry-typedefs} (proves the typedefs module is usable).</li>
+ *   <li>The thin REST {@link AtlasAdapter} can reach a running Atlas instance.</li>
+ *   <li>Atlas will accept the Sourcelume typedefs (proves the typedef JSON is well-formed
+ *       and the REST wire format is correct).</li>
  * </ol>
+ *
+ * <p>Run directly via {@code mvn -pl sourcelume-registry-ingest-worker exec:java}
+ * against a running Atlas, or just start the Quarkus app and let
+ * {@code AtlasBootstrapRunner} do the same work on startup.
  */
 public final class WiringSpike {
 
-    private static final String SPEC_CONTEXT_RESOURCE = SpecResourceLoader.DEFAULT_CONTEXT_RESOURCE;
-    private static final String TYPEDEFS_RESOURCE = "models/sourcelume/sourcelume_model.json";
-
     public static void main(String[] args) {
-        System.out.println("Sourcelume Registry steel thread starting...");
+        // When run via exec:java outside the Quarkus container, this performs the same
+        // four proof steps the Spring WiringSpike did. Inside Quarkus, the
+        // AtlasBootstrapRunner does this on startup — this main is the manual fallback.
+        String atlasUrl = args.length > 0 ? args[0] : System.getenv().getOrDefault("SOURCELUME_ATLAS_URL", "http://localhost:21000");
+        String user = System.getenv().getOrDefault("SOURCELUME_ATLAS_USER", "admin");
+        String password = System.getenv().getOrDefault("SOURCELUME_ATLAS_PASSWORD", "atlasR0cks!");
 
-        readSpecContextFromJar();
+        try {
+            // Step 1: spec jar resource resolvable
+            byte[] ctx = SpecResourceLoader.loadResourceBytes(SpecResourceLoader.DEFAULT_CONTEXT_RESOURCE);
+            System.out.println("1. spec context read: " + ctx.length + " bytes");
 
-        SourcelumeAtlasProperties properties = new SourcelumeAtlasProperties();
-        String atlasUrl = firstNonBlank(
-                args.length > 0 ? args[0] : null,
-                System.getenv("SOURCELUME_ATLAS_URL"),
-                "http://localhost:21000");
-        String username = firstNonBlank(System.getenv("SOURCELUME_ATLAS_USER"), "admin");
-        String password = firstNonBlank(System.getenv("SOURCELUME_ATLAS_PASSWORD"), "atlasR0cks!");
+            // Step 2: typedefs resource resolvable
+            String typedefs = SpecResourceLoader.loadResourceString("models/sourcelume/sourcelume_model.json");
+            System.out.println("2. typedefs loaded: " + (typedefs.contains("sourcelume_dataset") ? "OK" : "MISSING sourcelume_dataset"));
 
-        properties.setUrl(atlasUrl);
-        properties.setUser(username);
-        properties.setPassword(password);
+            // Steps 3 & 4 require the AtlasAdapter, which in Quarkus is CDI-managed.
+            // For the standalone manual run, we construct the thin client directly.
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            org.apache.sourcelume.registry.atlas.adapter.RestAtlasAdapter adapter =
+                    new org.apache.sourcelume.registry.atlas.adapter.RestAtlasAdapter(
+                            new StandaloneProperties(atlasUrl, user, password), om);
 
-        AtlasClientV2 atlasClient = new AtlasClientV2(new String[]{atlasUrl}, new String[]{username, password});
-        AtlasAdapter atlasAdapter = new DefaultAtlasAdapter(atlasClient, properties, new ObjectMapper());
-
-        AtlasTypesDef typesDef = atlasAdapter.loadTypeDefs(TYPEDEFS_RESOURCE);
-        System.out.println("Loaded " + (typesDef.getEntityDefs() != null ? typesDef.getEntityDefs().size() : 0)
-                + " entity def(s) from " + TYPEDEFS_RESOURCE);
-
-        AtlasTypesDef created = atlasAdapter.registerOrUpdateTypeDefs(typesDef);
-        System.out.println("Atlas accepted the typedefs. Entity types: "
-                + (created.getEntityDefs() != null ? created.getEntityDefs().size() : 0));
-
-        System.out.println("Steel thread complete: sourcelume-spec jar resource read, "
-                + "Sourcelume typedefs loaded, and Atlas accepted them.");
-    }
-
-    private static void readSpecContextFromJar() {
-        byte[] bytes = SpecResourceLoader.loadResourceBytes(SPEC_CONTEXT_RESOURCE);
-        System.out.println("Read " + bytes.length
-                + " bytes from sourcelume-spec jar resource: " + SPEC_CONTEXT_RESOURCE);
-    }
-
-    private static String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
+            System.out.println("3. atlas reachable: " + adapter.isServerReady());
+            AtlasAdapter.TypeDefinitionModel td = adapter.registerTypeDefsFromResource("models/sourcelume/sourcelume_model.json");
+            System.out.println("4. atlas accepted typedefs, entity types: " + td.getEntityDefCount());
+            System.out.println("Steel thread complete: sourcelume-spec jar resource read, Sourcelume typedefs loaded, and Atlas accepted them.");
+        } catch (Exception e) {
+            System.err.println("Steel thread FAILED: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
         }
-        return null;
     }
 
-    private WiringSpike() {
-        // Entry point only.
+    /** Minimal properties impl for the standalone run path (CDI not available). */
+    record StandaloneProperties(String url, String user, String password) implements SourcelumeAtlasProperties {
+        @Override public String url() { return url; }
+        @Override public String user() { return user; }
+        @Override public String password() { return password; }
+        @Override public java.util.Optional<String> passwordFile() { return java.util.Optional.empty(); }
+        @Override public String specContextResource() { return "context/0.0.1/sourcelume.jsonld"; }
+        @Override public String typedefsResource() { return "models/sourcelume/sourcelume_model.json"; }
+        @Override public boolean bootstrapOnStartup() { return false; }
+        @Override public int maxRetries() { return 1; }
+        @Override public long retryDelayMs() { return 0; }
     }
 }

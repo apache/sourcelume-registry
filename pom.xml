@@ -1,69 +1,51 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    (the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+-->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
-    <!--
-
-        Licensed to the Apache Software Foundation (ASF) under one or more
-        contributor license agreements.  See the NOTICE file distributed with
-        this work for additional information regarding copyright ownership.
-        The ASF licenses this file to You under the Apache License, Version 2.0
-        (the "License"); you may not use this file except in compliance with
-        the License.  You may obtain a copy of the License at
-
-           http://www.apache.org/licenses/LICENSE-2.0
-
-        Unless required by applicable law or agreed to in writing, software
-        distributed under the License is distributed on an "AS IS" BASIS,
-        WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-        See the License for the specific language governing permissions and
-        limitations under the License.
-    -->
-
     <modelVersion>4.0.0</modelVersion>
-
-    <parent>
-        <groupId>org.apache</groupId>
-        <artifactId>apache</artifactId>
-        <version>39</version>
-        <relativePath />
-    </parent>
 
     <groupId>org.apache.sourcelume</groupId>
     <artifactId>sourcelume-registry</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
-
     <name>Apache Sourcelume Registry</name>
-    <description>Registry for Apache Sourcelume.</description>
 
-    <!--
-      STEEL THREAD SCOPE ONLY.
-      This parent currently lists only the two modules needed to prove that a locally-built
-      sourcelume-spec jar can be consumed by this project, and that this project can talk to
-      a running Apache Atlas instance and register the Sourcelume typedefs.
+    <description>
+        Apache Sourcelume Registry — Quarkus-based spike.
 
-      NOT included yet (see docs/architecture.md for the full design - library modules
-      first, then the thin app-* Spring Boot runners):
-        sourcelume-registry-common
-        sourcelume-registry-atlas-adapter   (the ONLY module allowed to use atlas-client-v2)
-        sourcelume-registry-atlas-rest      (read-only Atlas access for the query path)
-        sourcelume-registry-messaging
-        sourcelume-registry-ingest-api
-        sourcelume-registry-cache
-        sourcelume-registry-query-api
-        sourcelume-registry-export
-        sourcelume-registry-app-ingest
-        sourcelume-registry-app-worker
-        sourcelume-registry-app-query
-        sourcelume-registry-app-export
-        sourcelume-registry-tests
+        This is a deliberately minimal slice through the Registry architecture,
+        parallel to the Spring Boot registry-spike branch. It proves three pieces
+        of wiring connect using Quarkus, CDI, and a thin JDK HttpClient instead of
+        Spring Boot and atlas-client-v2:
 
-      Also not yet done (docs/architecture.md "Dependency management"): importing the
-      spring-boot-dependencies BOM below. Once it is imported it owns the Jackson version
-      and the hand-pinned jackson.version property here should be deleted, not raised.
-    -->
+        1. A locally-built sourcelume-spec jar can be depended on and its resources read.
+        2. A backend-neutral AtlasAdapter (with a thin REST client implementation)
+           can reach a running Apache Atlas instance and register typedefs.
+        3. A Quarkus application starts, bootstraps the typedefs on startup, and
+           exposes a readiness health check.
+
+        Everything else from the full architecture (messaging, query-api, export,
+        cache, the app-* runners beyond the worker) is intentionally left out.
+        See docs/architecture.md for the full module design.
+    </description>
+
     <modules>
         <module>sourcelume-registry-typedefs</module>
         <module>sourcelume-registry-common</module>
@@ -72,112 +54,35 @@
     </modules>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <!-- Java 21 baseline (LTS). CI should also run on 25. Skip 26 (non-LTS).
+             See dev-list thread on Java baseline + framework choice (Sept 2026). -->
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Dependency Versions -->
-        <spring-boot.version>3.3.5</spring-boot.version>
-        <atlas.version>2.5.0</atlas.version>
-        <jackson-jaxrs-atlas.version>2.12.7</jackson-jaxrs-atlas.version>
+        <quarkus.version>3.33.0</quarkus.version>
+        <jackson.version>2.18.0</jackson.version>
         <sourcelume-spec.version>0.0.1-SNAPSHOT</sourcelume-spec.version>
 
         <!-- Plugin Versions -->
-        <exec-maven-plugin.version>3.2.0</exec-maven-plugin.version>
-        <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
+        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
-            <!-- Jackson JAX-RS provider pinned to 2.12.7 for Atlas Client V2 / Jersey 1.x compatibility -->
+            <!-- Quarkus BOM owns the Quarkus + Jakarta + Jackson versions -->
             <dependency>
-                <groupId>com.fasterxml.jackson.jaxrs</groupId>
-                <artifactId>jackson-jaxrs-json-provider</artifactId>
-                <version>${jackson-jaxrs-atlas.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.fasterxml.jackson.jaxrs</groupId>
-                <artifactId>jackson-jaxrs-base</artifactId>
-                <version>${jackson-jaxrs-atlas.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-dependencies</artifactId>
-                <version>${spring-boot.version}</version>
+                <groupId>io.quarkus.platform</groupId>
+                <artifactId>quarkus-bom</artifactId>
+                <version>${quarkus.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.atlas</groupId>
-                <artifactId>atlas-client-v2</artifactId>
-                <version>${atlas.version}</version>
-                <exclusions>
-                    <!-- Logging: route everything through Boot's slf4j + logback. -->
-                    <exclusion><groupId>org.slf4j</groupId><artifactId>slf4j-log4j12</artifactId></exclusion>
-                    <exclusion><groupId>org.slf4j</groupId><artifactId>slf4j-reload4j</artifactId></exclusion>
-                    <exclusion><groupId>ch.qos.reload4j</groupId><artifactId>reload4j</artifactId></exclusion>
-                    <exclusion><groupId>log4j</groupId><artifactId>log4j</artifactId></exclusion>
-                    <exclusion><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-slf4j-impl</artifactId></exclusion>
-                    <exclusion><groupId>commons-logging</groupId><artifactId>commons-logging</artifactId></exclusion>
-
-                    <!-- Servlet/JAX-RS server-side bits a client has no business shipping. -->
-                    <exclusion><groupId>javax.servlet</groupId><artifactId>servlet-api</artifactId></exclusion>
-                    <exclusion><groupId>javax.servlet</groupId><artifactId>javax.servlet-api</artifactId></exclusion>
-                    <exclusion><groupId>com.sun.jersey</groupId><artifactId>jersey-server</artifactId></exclusion>
-
-                    <!-- Hadoop ecosystem: unused by REST client, but keep hadoop-common for AtlasBaseClient UserGroupInformation -->
-                    <exclusion><groupId>org.apache.hadoop</groupId><artifactId>hadoop-hdfs</artifactId></exclusion>
-                    <exclusion><groupId>org.apache.hadoop</groupId><artifactId>hadoop-annotations</artifactId></exclusion>
-
-                    <!-- Let the Spring Boot BOM own Jackson's version, not Atlas. -->
-                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-core</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-annotations</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.jaxrs</groupId><artifactId>jackson-jaxrs-base</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.jaxrs</groupId><artifactId>jackson-jaxrs-json-provider</artifactId></exclusion>
-                </exclusions>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.atlas</groupId>
-                <artifactId>atlas-intg</artifactId>
-                <version>${atlas.version}</version>
-                <exclusions>
-                    <exclusion><groupId>org.slf4j</groupId><artifactId>slf4j-log4j12</artifactId></exclusion>
-                    <exclusion><groupId>org.slf4j</groupId><artifactId>slf4j-reload4j</artifactId></exclusion>
-                    <exclusion><groupId>ch.qos.reload4j</groupId><artifactId>reload4j</artifactId></exclusion>
-                    <exclusion><groupId>log4j</groupId><artifactId>log4j</artifactId></exclusion>
-                    <exclusion><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-slf4j-impl</artifactId></exclusion>
-                    <exclusion><groupId>commons-logging</groupId><artifactId>commons-logging</artifactId></exclusion>
-                    <exclusion><groupId>javax.servlet</groupId><artifactId>servlet-api</artifactId></exclusion>
-                    <exclusion><groupId>javax.servlet</groupId><artifactId>javax.servlet-api</artifactId></exclusion>
-                    <exclusion><groupId>org.apache.hadoop</groupId><artifactId>hadoop-hdfs</artifactId></exclusion>
-                    <exclusion><groupId>org.apache.hadoop</groupId><artifactId>hadoop-annotations</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-core</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-annotations</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.jaxrs</groupId><artifactId>jackson-jaxrs-base</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.jaxrs</groupId><artifactId>jackson-jaxrs-json-provider</artifactId></exclusion>
-                </exclusions>
             </dependency>
             <dependency>
                 <groupId>org.apache.sourcelume</groupId>
                 <artifactId>sourcelume-spec</artifactId>
                 <version>${sourcelume-spec.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.sourcelume</groupId>
-                <artifactId>sourcelume-registry-typedefs</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.sourcelume</groupId>
-                <artifactId>sourcelume-registry-common</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.sourcelume</groupId>
-                <artifactId>sourcelume-registry-atlas-adapter</artifactId>
-                <version>${project.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -186,26 +91,24 @@
         <pluginManagement>
             <plugins>
                 <plugin>
-                    <groupId>org.springframework.boot</groupId>
-                    <artifactId>spring-boot-maven-plugin</artifactId>
-                    <version>${spring-boot.version}</version>
-                </plugin>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>${maven-compiler-plugin.version}</version>
                     <configuration>
-                        <release>17</release>
+                        <release>${maven.compiler.release}</release>
+                    </configuration>
+                </plugin>
+                <!-- Mockito self-attach is deprecated on Java 21+ and will break on
+                     future JDKs. Configure the Byte Buddy agent explicitly via
+                     -javaagent in Surefire so tests stay stable across JDK bumps.
+                     See Calvin's dev-list note (Sept 2026). -->
+                <plugin>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration>
+                        <argLine>-javaagent:${settings.localRepository}/net/bytebuddy/byte-buddy-agent/1.15.11/byte-buddy-agent-1.15.11.jar</argLine>
                     </configuration>
                 </plugin>
             </plugins>
         </pluginManagement>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-            </plugin>
-        </plugins>
     </build>
 
 </project>

@@ -1,70 +1,126 @@
-# Apache Sourcelume Registry (`sourcelume-registry`)
+# Sourcelume Registry — Quarkus Spike
 
-This is a deliberately minimal slice through the Registry architecture. It does not
-implement any Sourcelume functionality (no signature verification, no schema validation,
-no queue, no REST/GraphQL). Its only job is to prove three pieces of wiring connect:
+This is a deliberately minimal slice through the Registry architecture, parallel to
+Jamie's Spring Boot `registry-spike` branch. It does not implement any Sourcelume
+functionality (no signature verification, no schema validation, no queue, no full
+REST/GraphQL API). Its only job is to prove three pieces of wiring connect using
+**Quarkus, CDI, and a thin JDK HttpClient** instead of Spring Boot and
+`atlas-client-v2`:
 
 1. A locally-built `sourcelume-spec` jar can be depended on and its resources read.
-2. Atlas typedefs bundled in `sourcelume-registry-typedefs` can be loaded and are
-   well-formed.
-3. This project can talk to a running Apache Atlas instance and successfully register
-   those typedefs.
+2. A backend-neutral `AtlasAdapter` (with a thin REST client implementation) can
+   reach a running Apache Atlas instance and register typedefs.
+3. A Quarkus application starts, bootstraps the typedefs on startup, and exposes a
+   readiness health check.
 
-## Modules included
+## Why this branch exists
 
-- `sourcelume-registry-typedefs` — one minimal entity type, `sourcelume_dataset`,
-  extending Atlas's built-in `DataSet` type, defined in a single
-  `models/sourcelume/sourcelume_model.json` file loaded via atomic
-  `createAtlasTypeDefs` call.
-- `sourcelume-registry-common` — shared DTOs (`ProvenanceRecordDto`, `CreatorDto`, `CustodyEventDto`, `LicenseHistoryDto`, `SourcelumeDatasetDto`), domain exceptions, and schema resource loaders.
-- `sourcelume-registry-atlas-adapter` — encapsulates `AtlasClientV2` interactions behind the `AtlasAdapter` domain interface (enforcing architecture decision D-002) with Spring Boot auto-configuration.
-- `sourcelume-registry-ingest-worker` — Spring Boot 3 worker runner, Actuator health indicator, and `AtlasBootstrapRunner` verifying spec resources and registering typedefs with Atlas.
+The dev-list thread (Sept 2026) raised two questions this spike answers:
 
-See [docs/architecture.md](docs/architecture.md) for the full module design and [docs/deployment.md](docs/deployment.md) for how runners are deployed.
+- **Java baseline.** Spring Boot 3.3.5 (Jamie's spike) only supports Java up to 23;
+  the Mockito/ByteBuddy version in its BOM fails on Java 26. Java 17 loses Oracle
+  support on 30.09.2026. Proposed baseline: Java 21 (LTS), CI on 25, skip 26 (non-LTS).
+- **Backend dependency.** Calvin proposed dropping `atlas-client-v2` and its whole
+  transitive tree in favour of a thin REST client over the JDK HttpClient + Jackson,
+  since the registry only talks to 4 Atlas endpoints. This spike implements that.
+- **Framework.** Calvin: "I don't feel strongly about Spring vs Quarkus... Quarkus
+  is closer to what JBO wants :). It might be worth doing a Quarkus version of the
+  spike and comparing the two." This is that Quarkus version.
 
-## Running it
+## Modules
 
-### Option 1: Running Spring Boot on Host
+- `sourcelume-registry-typedefs` — one minimal entity type, `sourcelume_dataset`
+  (unchanged from the Spring spike; vendor-neutral).
+- `sourcelume-registry-common` — DTOs mapping spec 0.0.1, Jakarta Validation, the
+  `SpecResourceLoader` (unchanged; vendor-neutral, only Jakarta API, no Spring/Quarkus
+  runtime dependency).
+- `sourcelume-registry-atlas-adapter` — **backend-neutral `AtlasAdapter` interface
+  using Sourcelume types**, implemented by `RestAtlasAdapter` (thin JDK HttpClient +
+  Jackson). Pulls in NO `atlas-client-v2` / `atlas-intg`. The Atlas REST wire shape
+  lives entirely in the implementation; the interface exposes only Sourcelume DTOs.
+- `sourcelume-registry-ingest-worker` — Quarkus app: starts, bootstraps typedefs on
+  startup (`AtlasBootstrapRunner` observing CDI `StartupEvent`), exposes readiness
+  via SmallRye Health (`AtlasHealthIndicator`).
+
+## Differences from the Spring spike (registry-spike branch)
+
+| Concern | Spring spike | Quarkus spike |
+|---|---|---|
+| Framework | Spring Boot 3.3.5 | Quarkus 3.33 LTS |
+| DI | Spring `@Component`/`@Bean` | CDI `@ApplicationScoped` + `@Inject` |
+| Config | `@ConfigurationProperties` (application.yml) | MicroProfile `@ConfigMapping` (application.properties) |
+| Health | Spring Actuator `HealthIndicator` | SmallRye Health `@Readiness` HealthCheck |
+| Startup | Spring `ApplicationRunner` | CDI `@Observes StartupEvent` |
+| Atlas client | `atlas-client-v2` + `atlas-intg` (full SDK tree) | JDK `HttpClient` + Jackson (thin, ~250 LoC) |
+| Adapter interface | imports `AtlasTypesDef`, `AtlasClientV2` | backend-neutral, Sourcelume types only |
+| Java baseline | 17 (EOL this month) | 21 (LTS) |
+| Mockito | inline-mock, self-attach (breaking on future JDKs) | CDI `@QuarkusComponentTest` / no ByteBuddy on Atlas |
+
+## Building
+
+### Prerequisites
+
+- Java 21 (LTS) — `jenv local 21` in this directory (or `export JAVA_HOME=$(/usr/libexec/java_home -v 21)`)
+- Maven 3.9+
+- The `sourcelume-spec` jar installed locally: from the `sourcelume-spec` repo, `mvn install`
+
+### Build
 
 ```bash
-# from this repository
-mvn clean package
+# from the sourcelume-spec repo (on main), so it lands in your local Maven repo
+mvn install
 
-# Run Spring Boot ingest worker pointing to local Atlas
-export SOURCELUME_ATLAS_URL=http://localhost:21000
-mvn -pl sourcelume-registry-ingest-worker spring-boot:run
+# from this repo, on the quarkus-spike branch
+mvn clean install
 ```
 
-### Option 2: Running with Docker Compose
+### Running
+
+#### Option A: standalone (the steel thread)
 
 ```bash
-# 1. Build project artifacts (creates target/*.jar)
-mvn clean package
-
-# 2. Build and run worker container
-docker compose build
-docker compose up
+mvn -pl sourcelume-registry-ingest-worker exec:java \
+  -Dexec.mainClass=org.apache.sourcelume.registry.ingest.worker.WiringSpike \
+  -Dexec.args="http://localhost:21000"
 ```
 
-Point `SOURCELUME_ATLAS_URL` / `SOURCELUME_ATLAS_USER` / `SOURCELUME_ATLAS_PASSWORD`
-env vars at a running Atlas instance — see `dev-support/README.md` for standing up the local Atlas backend.
+#### Option B: Quarkus app (dev mode)
 
-## Local Dev Support (Apache Atlas)
+```bash
+mvn -pl sourcelume-registry-ingest-worker quarkus:dev
+```
 
-See [`dev-support/README.md`](dev-support/README.md) for complete instructions on standing up the local Apache Atlas backend using Docker Compose and testing the Spring Boot runtime.
+Health check: `curl http://localhost:8082/q/health/ready`
 
+#### Option C: Docker
 
-## Overview
+See `dev-support/README.md` for standing up Atlas. Then:
 
-## Layout
+```bash
+docker compose up -d --wait
+curl http://localhost:8082/q/health/ready
+```
 
+## What "success" looks like
 
+The worker starts, logs:
 
-## Get involved
+```
+1. spec context read: N bytes
+2. typedefs loaded: OK
+3. atlas reachable: true
+4. atlas accepted typedefs, entity types: 1
+Sourcelume Registry bootstrap completed successfully.
+```
 
-- Mailing list: dev@sourcelume.apache.org ([archives](https://lists.apache.org/list.html?dev@sourcelume.apache.org))
-- ASF Slack: #sourcelume (Ask to be invited)
+and `/q/health/ready` returns `UP` with `atlas: CONNECTED`.
 
-## License
+If it gets that far, the wiring described in the Registry's high-level architecture is
+real on the Quarkus + thin-client stack, not just a diagram.
 
-This project is licensed under [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+## Open questions for the dev list
+
+This spike does not decide the framework question. It exists so the list can
+**compare** the two implementations side by side and settle Java baseline +
+framework + backend port before merging either spike into `main` (per Calvin's
+proposed sequencing).

@@ -16,114 +16,64 @@
  */
 package org.apache.sourcelume.registry.atlas.adapter.config;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
+import io.smallrye.config.ConfigMapping;
+import io.smallrye.config.WithDefault;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 /**
- * Configuration properties for Atlas connectivity and Sourcelume schema bootstrap.
+ * Configuration for Atlas connectivity and Sourcelume schema bootstrap, bound from
+ * MicroProfile Config properties under the {@code sourcelume.atlas} prefix.
+ *
+ * <p>Quarkus/SmallRye Config equivalent of the Spring Boot
+ * {@code @ConfigurationProperties(prefix = "sourcelume.atlas")} used in the Spring
+ * spike. The password-file resolution mirrors that behavior.
  */
-@ConfigurationProperties(prefix = "sourcelume.atlas")
-public class SourcelumeAtlasProperties {
+@ConfigMapping(prefix = "sourcelume.atlas")
+public interface SourcelumeAtlasProperties {
 
-    private String url = "http://localhost:21000";
-    private String user = "admin";
-    private String password = "atlasR0cks!";
-    private String passwordFile;
-    private String specContextResource = "context/0.0.1/sourcelume.jsonld";
-    private String typedefsResource = "models/sourcelume/sourcelume_model.json";
-    private boolean bootstrapOnStartup = true;
-    private int maxRetries = 5;
-    private long retryDelayMs = 2000L;
+    @WithDefault("http://localhost:21000")
+    String url();
 
-    public String getUrl() {
-        return url;
-    }
+    @WithDefault("admin")
+    String user();
 
-    public void setUrl(String url) {
-        this.url = url;
-    }
+    @WithDefault("atlasR0cks!")
+    String password();
 
-    public String getUser() {
-        return user;
-    }
+    Optional<String> passwordFile();
 
-    public void setUser(String user) {
-        this.user = user;
-    }
+    @WithDefault("context/0.0.1/sourcelume.jsonld")
+    String specContextResource();
 
-    public String getPassword() {
-        return password;
-    }
+    @WithDefault("models/sourcelume/sourcelume_model.json")
+    String typedefsResource();
 
-    public void setPassword(String password) {
-        this.password = password;
-    }
+    @WithDefault("true")
+    boolean bootstrapOnStartup();
 
-    public String getPasswordFile() {
-        return passwordFile;
-    }
+    @WithDefault("5")
+    int maxRetries();
 
-    public void setPasswordFile(String passwordFile) {
-        this.passwordFile = passwordFile;
-    }
-
-    public String getSpecContextResource() {
-        return specContextResource;
-    }
-
-    public void setSpecContextResource(String specContextResource) {
-        this.specContextResource = specContextResource;
-    }
-
-    public String getTypedefsResource() {
-        return typedefsResource;
-    }
-
-    public void setTypedefsResource(String typedefsResource) {
-        this.typedefsResource = typedefsResource;
-    }
-
-    public boolean isBootstrapOnStartup() {
-        return bootstrapOnStartup;
-    }
-
-    public void setBootstrapOnStartup(boolean bootstrapOnStartup) {
-        this.bootstrapOnStartup = bootstrapOnStartup;
-    }
-
-    public int getMaxRetries() {
-        return maxRetries;
-    }
-
-    public void setMaxRetries(int maxRetries) {
-        this.maxRetries = maxRetries;
-    }
-
-    public long getRetryDelayMs() {
-        return retryDelayMs;
-    }
-
-    public void setRetryDelayMs(long retryDelayMs) {
-        this.retryDelayMs = retryDelayMs;
-    }
+    @WithDefault("2000")
+    long retryDelayMs();
 
     /**
      * Resolves the Atlas password, preferring {@code passwordFile} if configured and accessible.
      */
-    public String getResolvedPassword() {
-        if (passwordFile != null && !passwordFile.isBlank()) {
-            Path path = Path.of(passwordFile);
+    default String resolvedPassword() {
+        if (passwordFile().isPresent()) {
+            Path path = Path.of(passwordFile().get());
             if (Files.exists(path)) {
                 try {
                     return Files.readString(path).trim();
-                } catch (IOException e) {
-                    throw new IllegalStateException("Failed to read password from file: " + passwordFile, e);
+                } catch (Exception e) {
+                    throw new IllegalStateException("Failed to read password from file: " + passwordFile().get(), e);
                 }
             }
         }
-        return password;
+        return password();
     }
 }
