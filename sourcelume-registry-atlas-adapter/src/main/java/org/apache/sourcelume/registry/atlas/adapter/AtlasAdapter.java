@@ -16,72 +16,103 @@
  */
 package org.apache.sourcelume.registry.atlas.adapter;
 
-import org.apache.atlas.AtlasClientV2;
-import org.apache.atlas.model.typedef.AtlasTypesDef;
 import org.apache.sourcelume.registry.atlas.adapter.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 
 /**
- * Narrow domain adapter isolating Apache Atlas client operations from the rest of Sourcelume.
+ * Backend-neutral adapter isolating Atlas (or any provenance-graph backend) operations
+ * from the rest of Sourcelume.
+ *
+ * <p>The interface exposes only Sourcelume types. The Atlas-specific JSON mapping and
+ * REST wire format live entirely in the implementation ({@code RestAtlasAdapter}).
+ * This keeps {@code sourcelume-registry-common} and the ingest worker free of any
+ * Atlas SDK dependency, and lets other backends implement the same contract.
  */
 public interface AtlasAdapter {
 
     /**
-     * Checks if the Apache Atlas server is reachable and responsive.
+     * Checks if the backend server is reachable and responsive.
      *
      * @return true if ready, false otherwise
      */
     boolean isServerReady();
 
     /**
-     * Loads typedef definitions from a classpath JSON resource.
+     * Loads a type definition model from a classpath JSON resource, parsed into the
+     * backend's native typedef JSON (the implementation owns the shape).
      *
      * @param resourcePath classpath resource path
-     * @return parsed AtlasTypesDef
+     * @return the parsed type definition as a backend-neutral holder
      * @throws AtlasAdapterException on failure
      */
-    AtlasTypesDef loadTypeDefs(String resourcePath);
+    TypeDefinitionModel loadTypeDefs(String resourcePath);
 
     /**
-     * Registers or updates typedefs in Apache Atlas.
+     * Registers or updates type definitions in the backend. If a type already
+     * exists, the implementation updates it; otherwise it creates it.
      *
-     * @param typesDef the typedefs to register or update
-     * @return the created or updated AtlasTypesDef
+     * @param typeDefs the type definitions to register
+     * @return the backend's response, parsed into a backend-neutral holder
      * @throws AtlasAdapterException on failure
      */
-    AtlasTypesDef registerOrUpdateTypeDefs(AtlasTypesDef typesDef);
+    TypeDefinitionModel registerOrUpdateTypeDefs(TypeDefinitionModel typeDefs);
 
     /**
-     * Convenience method to load and register/update typedefs from a classpath resource.
+     * Convenience: load from a resource and register in one call.
      *
      * @param resourcePath classpath resource path
-     * @return the created or updated AtlasTypesDef
+     * @return the registered type definition
      * @throws AtlasAdapterException on failure
      */
-    AtlasTypesDef registerTypeDefsFromResource(String resourcePath);
+    default TypeDefinitionModel registerTypeDefsFromResource(String resourcePath) {
+        return registerOrUpdateTypeDefs(loadTypeDefs(resourcePath));
+    }
 
     /**
-     * Creates or updates a sourcelume_dataset entity in Atlas.
+     * Creates or updates a dataset entity in the backend.
      *
-     * @param dataset dataset DTO
-     * @return the assigned GUID
+     * @param dataset the dataset to persist
+     * @return the backend-assigned identifier (e.g. GUID) for the entity
      * @throws AtlasAdapterException on failure
      */
     String createOrUpdateDatasetEntity(SourcelumeDatasetDto dataset);
 
     /**
-     * Fetches a sourcelume_dataset entity by its qualifiedName.
+     * Retrieves a dataset by its qualified name, or {@code null} if not found.
      *
-     * @param qualifiedName qualified name of the dataset
-     * @return the dataset DTO or null if not found
+     * @param qualifiedName the qualified name to look up
+     * @return the dataset DTO, or null
      * @throws AtlasAdapterException on failure
      */
     SourcelumeDatasetDto getDatasetByQualifiedName(String qualifiedName);
 
     /**
-     * Direct handle to the underlying AtlasClientV2 for specialized write/batch requirements.
-     *
-     * @return AtlasClientV2 instance
+     * Backend-neutral holder for a parsed type definition model. The Atlas
+     * implementation carries the raw JSON-LD/JSON structure; other backends
+     * would carry their own. This keeps the Atlas wire shape out of the
+     * interface signature while still passing the payload through.
      */
-    AtlasClientV2 getAtlasClient();
+    final class TypeDefinitionModel {
+        private final String sourceResource;
+        private final byte[] rawJson;
+        private final int entityDefCount;
+
+        public TypeDefinitionModel(String sourceResource, byte[] rawJson, int entityDefCount) {
+            this.sourceResource = sourceResource;
+            this.rawJson = rawJson;
+            this.entityDefCount = entityDefCount;
+        }
+
+        public String getSourceResource() {
+            return sourceResource;
+        }
+
+        public byte[] getRawJson() {
+            return rawJson;
+        }
+
+        public int getEntityDefCount() {
+            return entityDefCount;
+        }
+    }
 }

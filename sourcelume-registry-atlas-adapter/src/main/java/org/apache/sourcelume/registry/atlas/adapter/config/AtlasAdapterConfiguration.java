@@ -17,9 +17,8 @@
 package org.apache.sourcelume.registry.atlas.adapter.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.atlas.AtlasClientV2;
 import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter;
-import org.apache.sourcelume.registry.atlas.adapter.DefaultAtlasAdapter;
+import org.apache.sourcelume.registry.atlas.adapter.RestAtlasAdapter;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -33,19 +32,9 @@ import org.springframework.context.annotation.Bean;
 public class AtlasAdapterConfiguration {
 
     @Bean
-    @ConditionalOnMissingBean
-    public AtlasClientV2 atlasClient(SourcelumeAtlasProperties properties) {
-        String url = properties.getUrl();
-        String user = properties.getUser();
-        String password = properties.getResolvedPassword();
-        return new AtlasClientV2(new String[]{url}, new String[]{user, password});
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public AtlasAdapter atlasAdapter(AtlasClientV2 atlasClient,
-                                     SourcelumeAtlasProperties properties,
+    @ConditionalOnMissingBean(AtlasAdapter.class)
+    public AtlasAdapter atlasAdapter(SourcelumeAtlasProperties properties,
                                      ObjectMapper objectMapper) {
-        return new DefaultAtlasAdapter(atlasClient, properties, objectMapper);
+        return new RestAtlasAdapter(properties, objectMapper);
     }
 }

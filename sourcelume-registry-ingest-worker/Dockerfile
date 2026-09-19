@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:21-jre
 WORKDIR /app
 
 # Install curl for Actuator health checks

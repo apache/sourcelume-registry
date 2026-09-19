@@ -16,8 +16,8 @@
  */
 package org.apache.sourcelume.registry.ingest.worker.service;
 
-import org.apache.atlas.model.typedef.AtlasTypesDef;
 import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter.TypeDefinitionModel;
 import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -55,17 +56,18 @@ class AtlasBootstrapServiceTest {
 
     @Test
     void loadTypeDefs_delegatesToAtlasAdapter() {
-        AtlasTypesDef expected = new AtlasTypesDef();
+        TypeDefinitionModel expected = new TypeDefinitionModel(properties.getTypedefsResource(), new byte[0], 1);
         when(atlasAdapter.loadTypeDefs(properties.getTypedefsResource())).thenReturn(expected);
 
-        AtlasTypesDef result = service.loadTypeDefs();
+        TypeDefinitionModel result = service.loadTypeDefs();
         assertNotNull(result);
+        assertEquals(1, result.getEntityDefCount());
         verify(atlasAdapter).loadTypeDefs(properties.getTypedefsResource());
     }
 
     @Test
     void bootstrap_registersTypeDefsInAtlas() {
-        AtlasTypesDef typesDef = new AtlasTypesDef();
+        TypeDefinitionModel typesDef = new TypeDefinitionModel(properties.getTypedefsResource(), new byte[0], 1);
         when(atlasAdapter.loadTypeDefs(any())).thenReturn(typesDef);
         when(atlasAdapter.registerOrUpdateTypeDefs(any())).thenReturn(typesDef);
 

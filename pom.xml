@@ -72,14 +72,12 @@
     </modules>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Dependency Versions -->
         <spring-boot.version>3.3.5</spring-boot.version>
-        <atlas.version>2.5.0</atlas.version>
-        <jackson-jaxrs-atlas.version>2.12.7</jackson-jaxrs-atlas.version>
         <sourcelume-spec.version>0.0.1-SNAPSHOT</sourcelume-spec.version>
 
         <!-- Plugin Versions -->
@@ -89,75 +87,12 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- Jackson JAX-RS provider pinned to 2.12.7 for Atlas Client V2 / Jersey 1.x compatibility -->
-            <dependency>
-                <groupId>com.fasterxml.jackson.jaxrs</groupId>
-                <artifactId>jackson-jaxrs-json-provider</artifactId>
-                <version>${jackson-jaxrs-atlas.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.fasterxml.jackson.jaxrs</groupId>
-                <artifactId>jackson-jaxrs-base</artifactId>
-                <version>${jackson-jaxrs-atlas.version}</version>
-            </dependency>
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
                 <version>${spring-boot.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.atlas</groupId>
-                <artifactId>atlas-client-v2</artifactId>
-                <version>${atlas.version}</version>
-                <exclusions>
-                    <!-- Logging: route everything through Boot's slf4j + logback. -->
-                    <exclusion><groupId>org.slf4j</groupId><artifactId>slf4j-log4j12</artifactId></exclusion>
-                    <exclusion><groupId>org.slf4j</groupId><artifactId>slf4j-reload4j</artifactId></exclusion>
-                    <exclusion><groupId>ch.qos.reload4j</groupId><artifactId>reload4j</artifactId></exclusion>
-                    <exclusion><groupId>log4j</groupId><artifactId>log4j</artifactId></exclusion>
-                    <exclusion><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-slf4j-impl</artifactId></exclusion>
-                    <exclusion><groupId>commons-logging</groupId><artifactId>commons-logging</artifactId></exclusion>
-
-                    <!-- Servlet/JAX-RS server-side bits a client has no business shipping. -->
-                    <exclusion><groupId>javax.servlet</groupId><artifactId>servlet-api</artifactId></exclusion>
-                    <exclusion><groupId>javax.servlet</groupId><artifactId>javax.servlet-api</artifactId></exclusion>
-                    <exclusion><groupId>com.sun.jersey</groupId><artifactId>jersey-server</artifactId></exclusion>
-
-                    <!-- Hadoop ecosystem: unused by REST client, but keep hadoop-common for AtlasBaseClient UserGroupInformation -->
-                    <exclusion><groupId>org.apache.hadoop</groupId><artifactId>hadoop-hdfs</artifactId></exclusion>
-                    <exclusion><groupId>org.apache.hadoop</groupId><artifactId>hadoop-annotations</artifactId></exclusion>
-
-                    <!-- Let the Spring Boot BOM own Jackson's version, not Atlas. -->
-                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-core</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-annotations</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.jaxrs</groupId><artifactId>jackson-jaxrs-base</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.jaxrs</groupId><artifactId>jackson-jaxrs-json-provider</artifactId></exclusion>
-                </exclusions>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.atlas</groupId>
-                <artifactId>atlas-intg</artifactId>
-                <version>${atlas.version}</version>
-                <exclusions>
-                    <exclusion><groupId>org.slf4j</groupId><artifactId>slf4j-log4j12</artifactId></exclusion>
-                    <exclusion><groupId>org.slf4j</groupId><artifactId>slf4j-reload4j</artifactId></exclusion>
-                    <exclusion><groupId>ch.qos.reload4j</groupId><artifactId>reload4j</artifactId></exclusion>
-                    <exclusion><groupId>log4j</groupId><artifactId>log4j</artifactId></exclusion>
-                    <exclusion><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-slf4j-impl</artifactId></exclusion>
-                    <exclusion><groupId>commons-logging</groupId><artifactId>commons-logging</artifactId></exclusion>
-                    <exclusion><groupId>javax.servlet</groupId><artifactId>servlet-api</artifactId></exclusion>
-                    <exclusion><groupId>javax.servlet</groupId><artifactId>javax.servlet-api</artifactId></exclusion>
-                    <exclusion><groupId>org.apache.hadoop</groupId><artifactId>hadoop-hdfs</artifactId></exclusion>
-                    <exclusion><groupId>org.apache.hadoop</groupId><artifactId>hadoop-annotations</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-core</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-annotations</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.jaxrs</groupId><artifactId>jackson-jaxrs-base</artifactId></exclusion>
-                    <exclusion><groupId>com.fasterxml.jackson.jaxrs</groupId><artifactId>jackson-jaxrs-json-provider</artifactId></exclusion>
-                </exclusions>
             </dependency>
             <dependency>
                 <groupId>org.apache.sourcelume</groupId>
@@ -195,7 +130,7 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>${maven-compiler-plugin.version}</version>
                     <configuration>
-                        <release>17</release>
+                        <release>21</release>
                     </configuration>
                 </plugin>
             </plugins>

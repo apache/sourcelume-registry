@@ -17,10 +17,9 @@
 package org.apache.sourcelume.registry.ingest.worker;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.atlas.AtlasClientV2;
-import org.apache.atlas.model.typedef.AtlasTypesDef;
 import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter;
-import org.apache.sourcelume.registry.atlas.adapter.DefaultAtlasAdapter;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter.TypeDefinitionModel;
+import org.apache.sourcelume.registry.atlas.adapter.RestAtlasAdapter;
 import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
 import org.apache.sourcelume.registry.common.spec.SpecResourceLoader;
 
@@ -31,7 +30,7 @@ import org.apache.sourcelume.registry.common.spec.SpecResourceLoader;
  * <ol>
  *   <li>Resolves spec resource via SpecResourceLoader in sourcelume-registry-common.</li>
  *   <li>Loads typedefs from sourcelume-registry-typedefs via AtlasAdapter.</li>
- *   <li>Constructs Atlas adapter connection.</li>
+ *   <li>Constructs thin REST Atlas adapter connection.</li>
  *   <li>Registers typedefs against Atlas instance.</li>
  * </ol>
  */
@@ -57,16 +56,15 @@ public final class WiringSpike {
         properties.setUser(username);
         properties.setPassword(password);
 
-        AtlasClientV2 atlasClient = new AtlasClientV2(new String[]{atlasUrl}, new String[]{username, password});
-        AtlasAdapter atlasAdapter = new DefaultAtlasAdapter(atlasClient, properties, new ObjectMapper());
+        AtlasAdapter atlasAdapter = new RestAtlasAdapter(properties, new ObjectMapper());
 
-        AtlasTypesDef typesDef = atlasAdapter.loadTypeDefs(TYPEDEFS_RESOURCE);
-        System.out.println("Loaded " + (typesDef.getEntityDefs() != null ? typesDef.getEntityDefs().size() : 0)
+        TypeDefinitionModel typesDef = atlasAdapter.loadTypeDefs(TYPEDEFS_RESOURCE);
+        System.out.println("Loaded " + typesDef.getEntityDefCount()
                 + " entity def(s) from " + TYPEDEFS_RESOURCE);
 
-        AtlasTypesDef created = atlasAdapter.registerOrUpdateTypeDefs(typesDef);
+        TypeDefinitionModel created = atlasAdapter.registerOrUpdateTypeDefs(typesDef);
         System.out.println("Atlas accepted the typedefs. Entity types: "
-                + (created.getEntityDefs() != null ? created.getEntityDefs().size() : 0));
+                + created.getEntityDefCount());
 
         System.out.println("Steel thread complete: sourcelume-spec jar resource read, "
                 + "Sourcelume typedefs loaded, and Atlas accepted them.");

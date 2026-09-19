@@ -215,3 +215,23 @@ docker compose down
 cd dev-support/vendor/atlas-docker
 docker compose -f docker-compose.atlas.yml down
 ```
+
+
+##### Alternate
+```text
+cd dev-support/vendor/atlas-docker
+
+# 1. Stop and destroy the existing Atlas containers (wipes the Postgres DB and Solr index)
+export ATLAS_BACKEND=postgres
+docker compose -f docker-compose.atlas.yml down
+
+# 2. Start a fresh Atlas stack with a clean, empty database
+docker compose -f docker-compose.atlas.yml up -d --wait
+
+# 3. Connect the new Atlas container to sourcelume-network
+ATLAS_CONTAINER=$(docker ps --filter "name=atlas" --format "{{.Names}}" | grep -v "zk\|solr\|db\|kafka" | head -n 1)
+docker network connect sourcelume-network "${ATLAS_CONTAINER}" || true
+
+# 4. Return to project root
+cd ../../
+```

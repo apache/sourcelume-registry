@@ -16,8 +16,8 @@
  */
 package org.apache.sourcelume.registry.ingest.worker.service;
 
-import org.apache.atlas.model.typedef.AtlasTypesDef;
 import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter.TypeDefinitionModel;
 import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
 import org.apache.sourcelume.registry.common.spec.SpecResourceLoader;
 import org.slf4j.Logger;
@@ -55,11 +55,10 @@ public class AtlasBootstrapService {
     /**
      * Loads the Sourcelume Atlas typedef definitions from the bundled JSON resource.
      */
-    public AtlasTypesDef loadTypeDefs() {
+    public TypeDefinitionModel loadTypeDefs() {
         String resourcePath = properties.getTypedefsResource();
-        AtlasTypesDef typesDef = atlasAdapter.loadTypeDefs(resourcePath);
-        log.info("Loaded {} entity def(s) from {}",
-                typesDef.getEntityDefs() != null ? typesDef.getEntityDefs().size() : 0, resourcePath);
+        TypeDefinitionModel typesDef = atlasAdapter.loadTypeDefs(resourcePath);
+        log.info("Loaded {} entity def(s) from {}", typesDef.getEntityDefCount(), resourcePath);
         return typesDef;
     }
 
@@ -69,7 +68,7 @@ public class AtlasBootstrapService {
     public boolean bootstrap() {
         try {
             readSpecContext();
-            AtlasTypesDef typesDef = loadTypeDefs();
+            TypeDefinitionModel typesDef = loadTypeDefs();
             return registerTypeDefs(typesDef);
         } catch (Exception e) {
             log.error("Failed to bootstrap Sourcelume typedefs into Atlas: {}", e.getMessage(), e);
@@ -80,12 +79,11 @@ public class AtlasBootstrapService {
     /**
      * Registers typedefs with Atlas via AtlasAdapter.
      */
-    public boolean registerTypeDefs(AtlasTypesDef typesDef) {
+    public boolean registerTypeDefs(TypeDefinitionModel typesDef) {
         try {
             log.info("Attempting to register Sourcelume typedefs with Atlas at {}", properties.getUrl());
-            AtlasTypesDef createdOrUpdated = atlasAdapter.registerOrUpdateTypeDefs(typesDef);
-            int entityCount = createdOrUpdated.getEntityDefs() != null ? createdOrUpdated.getEntityDefs().size() : 0;
-            log.info("Successfully registered/updated Sourcelume typedefs with Atlas. Entity types: {}", entityCount);
+            TypeDefinitionModel createdOrUpdated = atlasAdapter.registerOrUpdateTypeDefs(typesDef);
+            log.info("Successfully registered/updated Sourcelume typedefs with Atlas. Entity types: {}", createdOrUpdated.getEntityDefCount());
             return true;
         } catch (Exception e) {
             log.error("Failed to register/update typedefs in Atlas: {}", e.getMessage());
