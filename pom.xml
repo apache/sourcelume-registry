@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    (the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.apache.sourcelume</groupId>
+    <artifactId>sourcelume-registry</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>Apache Sourcelume Registry</name>
+
+    <description>
+        Apache Sourcelume Registry — framework-free core.
+
+        Per the dev-list consensus (September 2026, thread "Apache Sourcelume
+        Registry repo creation, and initial discussion") the repository is
+        organized as a framework-independent Core/API with framework-specific
+        Runtime modules layered on top:
+
+        - sourcelume-registry-typedefs: backend type definitions (JSON resources)
+        - sourcelume-registry-common: DTOs mapped from sourcelume-spec, Jakarta
+          Validation annotations, exceptions, spec resource loader — no
+          framework dependencies, Jakarta API + Jackson only
+        - sourcelume-registry-core: backend-neutral adapter SPI (AtlasAdapter)
+          exposing only Sourcelume types; no backend SDK types in the interface
+
+        Runtime modules (for example a Quarkus runtime providing a thin REST
+        AtlasAdapter implementation) build on this core as separate modules.
+        Java 21 baseline.
+    </description>
+
+    <modules>
+        <module>sourcelume-registry-typedefs</module>
+        <module>sourcelume-registry-common</module>
+        <module>sourcelume-registry-core</module>
+    </modules>
+
+    <properties>
+        <!-- Java 21 baseline (LTS). See dev-list consensus, September 2026. -->
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- Dependency versions: no framework BOM, the core is framework-free -->
+        <jackson.version>2.18.0</jackson.version>
+        <jakarta.validation.version>3.0.2</jakarta.validation.version>
+        <hibernate-validator.version>8.0.1.Final</hibernate-validator.version>
+        <expressly.version>5.0.0</expressly.version>
+        <slf4j.version>2.0.16</slf4j.version>
+        <junit.version>5.11.4</junit.version>
+        <sourcelume-spec.version>0.0.1-SNAPSHOT</sourcelume-spec.version>
+
+        <!-- Plugin versions -->
+        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
+                <version>${junit.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.sourcelume</groupId>
+                <artifactId>sourcelume-spec</artifactId>
+                <version>${sourcelume-spec.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.validation</groupId>
+                <artifactId>jakarta.validation-api</artifactId>
+                <version>${jakarta.validation.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.hibernate.validator</groupId>
+                <artifactId>hibernate-validator</artifactId>
+                <version>${hibernate-validator.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.glassfish.expressly</groupId>
+                <artifactId>expressly</artifactId>
+                <version>${expressly.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.sourcelume</groupId>
+                <artifactId>sourcelume-registry-typedefs</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.sourcelume</groupId>
+                <artifactId>sourcelume-registry-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.sourcelume</groupId>
+                <artifactId>sourcelume-registry-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${maven-compiler-plugin.version}</version>
+                    <configuration>
+                        <release>${maven.compiler.release}</release>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+</project>
