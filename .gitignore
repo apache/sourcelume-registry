@@ -5,3 +5,6 @@
 
 target/
 *.class
+
+# Vendored Atlas docker tooling (created by dev-support/setup.sh)
+dev-support/vendor/

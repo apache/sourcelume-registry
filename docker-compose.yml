@@ -1,0 +1,52 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Apache Sourcelume Registry — Quarkus runtime container.
+# The Apache Atlas backend is stood up via dev-support/ (see dev-support/README.md);
+# this compose runs the registry runtime connected to Atlas via the shared
+# `sourcelume-network`.
+
+networks:
+  sourcelume-network:
+    name: sourcelume-network
+    external: true
+
+services:
+  registry:
+    build:
+      context: .
+      dockerfile: sourcelume-registry-runtime-quarkus/Dockerfile
+    image: apache/sourcelume-registry-runtime-quarkus:0.0.1
+    container_name: sourcelume-registry-quarkus
+    environment:
+      SOURCELUME_ATLAS_URL: ${SOURCELUME_ATLAS_URL:-http://atlas:21000}
+      SOURCELUME_ATLAS_USER: ${SOURCELUME_ATLAS_USER:-admin}
+      SOURCELUME_ATLAS_PASSWORD: ${SOURCELUME_ATLAS_PASSWORD:-atlasR0cks!}
+      SOURCELUME_ATLAS_PASSWORD_FILE: ${SOURCELUME_ATLAS_PASSWORD_FILE:-}
+      SOURCELUME_ATLAS_BOOTSTRAP_ON_STARTUP: "true"
+      JAVA_OPTS: "-XX:+UseG1GC -XX:MaxRAMPercentage=75.0"
+    ports:
+      - "8082:8082"
+    networks:
+      - sourcelume-network
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/q/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: on-failure

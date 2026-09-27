@@ -51,6 +51,10 @@
         <module>sourcelume-registry-typedefs</module>
         <module>sourcelume-registry-common</module>
         <module>sourcelume-registry-core</module>
+        <!-- Runtime modules own their framework dependencies; the parent stays
+             framework-free. The Quarkus runtime imports the Quarkus BOM in its
+             own dependencyManagement. -->
+        <module>sourcelume-registry-runtime-quarkus</module>
     </modules>
 
     <properties>
