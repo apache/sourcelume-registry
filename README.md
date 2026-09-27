@@ -22,10 +22,11 @@ repo creation, and initial discussion") the codebase is organized as a
 | `sourcelume-registry-typedefs` | Backend type definitions (JSON resources) |
 | `sourcelume-registry-common` | DTOs mapped from `sourcelume-spec`, Jakarta Validation annotations, exceptions, spec resource loader — framework-free (Jakarta API + Jackson only) |
 | `sourcelume-registry-core` | Backend-neutral `AtlasAdapter` SPI (API) — no framework, no backend SDK dependencies |
+| `sourcelume-registry-runtime-quarkus` | Quarkus runtime: thin REST `AtlasAdapter` implementation over the core SPI, startup bootstrap (spec verification + typedef registration), SmallRye Health readiness, Docker packaging |
 
-Runtime modules (for example a Quarkus runtime providing a thin REST
-`AtlasAdapter` implementation, startup bootstrap, and health checks) build on
-this core as separate modules.
+Runtime modules build on the framework-free core as separate modules and own
+their framework dependencies (the Quarkus BOM is imported in the runtime
+module only). Additional runtimes can follow the same pattern.
 
 ## Building
 
@@ -36,6 +37,28 @@ SETUP.md).
 ```bash
 mvn clean install
 ```
+
+## Running the Quarkus runtime
+
+Against a local Atlas (default `http://localhost:21000`, see
+`dev-support/README.md` for standing one up):
+
+```bash
+mvn -pl sourcelume-registry-runtime-quarkus quarkus:dev
+```
+
+Or as a container next to Atlas via the shared `sourcelume-network`:
+
+```bash
+mvn clean package
+docker compose build
+docker compose up -d
+```
+
+Readiness (Atlas connectivity) is exposed at
+`http://localhost:8082/q/health/ready`; metrics at `/q/metrics`.
+Configuration lives under the `sourcelume.atlas.*` properties
+(`sourcelume-registry-runtime-quarkus/src/main/resources/application.properties`).
 
 ## Get involved
 

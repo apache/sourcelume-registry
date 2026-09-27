@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    (the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.apache.sourcelume</groupId>
+        <artifactId>sourcelume-registry</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>sourcelume-registry-runtime-quarkus</artifactId>
+    <name>Apache Sourcelume Registry - Quarkus Runtime</name>
+    <packaging>jar</packaging>
+
+    <description>
+        Quarkus runtime for the Apache Sourcelume Registry, layered on the
+        framework-free registry core (the AtlasAdapter SPI). On startup it
+        verifies the sourcelume-spec jar resources, loads the Sourcelume
+        typedefs, and registers them with Apache Atlas through a thin REST
+        adapter (JDK HttpClient, no atlas-client-v2 / atlas-intg dependency
+        tree). Readiness is exposed via SmallRye Health at /q/health/ready.
+
+        Per the dev-list consensus this module owns the only Quarkus
+        dependencies in the reactor: the Quarkus BOM is imported here, in the
+        module's own dependencyManagement. The parent POM stays framework-free.
+    </description>
+
+    <properties>
+        <!-- Only place in the reactor that knows about Quarkus. -->
+        <quarkus.version>3.33.3</quarkus.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Quarkus BOM owns the Quarkus + Jakarta + Jackson versions for
+                 this module only; the parent dependencyManagement stays as-is. -->
+            <dependency>
+                <groupId>io.quarkus</groupId>
+                <artifactId>quarkus-bom</artifactId>
+                <version>${quarkus.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Framework-free registry core: AtlasAdapter SPI + DTOs + typedefs -->
+        <dependency>
+            <groupId>org.apache.sourcelume</groupId>
+            <artifactId>sourcelume-registry-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.sourcelume</groupId>
+            <artifactId>sourcelume-registry-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.sourcelume</groupId>
+            <artifactId>sourcelume-registry-typedefs</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Spec jar (JSON-LD context, schema, SHACL) — version from parent dependencyManagement -->
+        <dependency>
+            <groupId>org.apache.sourcelume</groupId>
+            <artifactId>sourcelume-spec</artifactId>
+        </dependency>
+
+        <!-- Quarkus runtime -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-smallrye-health</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Produces the fast-jar under target/quarkus-app/ used by the Dockerfile. -->
+            <plugin>
+                <groupId>io.quarkus</groupId>
+                <artifactId>quarkus-maven-plugin</artifactId>
+                <version>${quarkus.version}</version>
+                <extensions>true</extensions>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>build</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Use the JBoss LogManager in tests (standard Quarkus setup) so test
+                 logging is initialized correctly on JDK 21+. -->
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
