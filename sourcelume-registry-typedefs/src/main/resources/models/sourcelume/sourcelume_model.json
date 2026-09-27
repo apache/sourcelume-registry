@@ -1,0 +1,33 @@
+{
+  "enumDefs": [],
+  "structDefs": [],
+  "classificationDefs": [],
+  "entityDefs": [
+    {
+      "name": "sourcelume_dataset",
+      "typeVersion": "1.0",
+      "description": "Placeholder entity for a dataset tracked by Sourcelume. Deliberately minimal - real attribute set will follow the sourcelume-spec schema once ingest/validation logic is built.",
+      "superTypes": [
+        "DataSet"
+      ],
+      "attributeDefs": [
+        {
+          "name": "sourceUri",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isIndexable": true,
+          "isOptional": true,
+          "isUnique": false
+        },
+        {
+          "name": "licenseId",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isIndexable": true,
+          "isOptional": true,
+          "isUnique": false
+        }
+      ]
+    }
+  ]
+}
