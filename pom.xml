@@ -57,6 +57,8 @@
     <!-- Atlas REST adapter implementing the core AtlasAdapter SPI, shared
          by the REST runtime and the ingest worker. -->
     <module>sourcelume-registry-atlas-adapter</module>
+    <!-- Headless ingest worker: polls PENDING records, validates, promotes. -->
+    <module>sourcelume-registry-ingest-worker</module>
     <!-- Validation plugins: discovered via the core RecordValidator SPI
          (ServiceLoader), each owning its validation machinery. -->
     <module>sourcelume-registry-validation-jsonschema</module>
@@ -164,6 +166,11 @@
       <dependency>
         <groupId>org.apache.sourcelume</groupId>
         <artifactId>sourcelume-registry-atlas-adapter</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.sourcelume</groupId>
+        <artifactId>sourcelume-registry-ingest-worker</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
