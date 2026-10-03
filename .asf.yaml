@@ -1,0 +1,38 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Self-service configuration for this repository, applied by ASF Infra
+# automation. Reference: https://github.com/apache/infrastructure-asfyaml
+#
+# This file only takes effect once it has landed on the default branch.
+# The context name below must match the job name in
+# .github/workflows/ci.yml exactly - a red CI therefore blocks every
+# merge into main. Merge buttons are deliberately left at the ASF
+# defaults until the project picks a merge policy on the dev list.
+
+github:
+  description: "Apache Sourcelume Registry: reference registry for AI training-data provenance records"
+  homepage: https://sourcelume.apache.org
+
+  protected_branches:
+    main:
+      required_status_checks:
+        contexts:
+          - "Maven verify (JDK 21)"
+
+notifications:
+  commits: commits@sourcelume.apache.org
+  pullrequests: dev@sourcelume.apache.org
+  jobs: commits@sourcelume.apache.org
