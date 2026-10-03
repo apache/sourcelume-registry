@@ -166,7 +166,10 @@ public class RestAtlasAdapter implements AtlasAdapter {
         entity.put("typeName", SourcelumeDatasetDto.TYPE_NAME);
         ObjectNode attributes = entity.putObject("attributes");
         attributes.put("qualifiedName", dataset.getQualifiedName());
-        attributes.put("name", dataset.getName());
+        // name may be absent on a PENDING write: the record has not been
+        // validated yet, so it may lack fields — only the promotion writes
+        // the mapped attributes.
+        if (dataset.getName() != null) attributes.put("name", dataset.getName());
         if (dataset.getDescription() != null) attributes.put("description", dataset.getDescription());
         if (dataset.getSourceUri() != null) attributes.put("sourceUri", dataset.getSourceUri());
         if (dataset.getLicenseId() != null) attributes.put("licenseId", dataset.getLicenseId());
