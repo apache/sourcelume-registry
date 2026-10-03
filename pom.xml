@@ -163,6 +163,12 @@
       <plugin>
         <groupId>org.apache.rat</groupId>
         <artifactId>apache-rat-plugin</artifactId>
+        <!-- Plain hash list, cannot carry a license header -->
+        <configuration>
+          <excludes>
+            <exclude>.git-blame-ignore-revs</exclude>
+          </excludes>
+        </configuration>
         <executions>
           <execution>
             <id>rat-check</id>
@@ -179,9 +185,8 @@
                 license headers from dev/license-header.txt, and sortPom for
                 the poms. Checkstyle adds structural rules Spotless cannot
                 express (dev/checkstyle.xml: JUnit 3/4 imports are banned).
-                Both mirror sourcelume-spec so both repos share one style.
-                The check goals are bound in a follow-up commit once the
-                one-off reformat has landed; `mvn spotless:apply` fixes drift.
+                Both mirror sourcelume-spec so both repos share one style;
+                `mvn spotless:apply` fixes drift.
             -->
       <plugin>
         <groupId>com.diffplug.spotless</groupId>
@@ -202,6 +207,15 @@
             </sortPom>
           </pom>
         </configuration>
+        <executions>
+          <execution>
+            <id>spotless-check</id>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <phase>validate</phase>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -220,6 +234,15 @@
             <version>${checkstyle.version}</version>
           </dependency>
         </dependencies>
+        <executions>
+          <execution>
+            <id>checkstyle-check</id>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <phase>validate</phase>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
