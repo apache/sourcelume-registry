@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.sourcelume.registry.runtime.quarkus.adapter;
+package org.apache.sourcelume.registry.atlas.adapter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,7 +23,7 @@ import com.sun.net.httpserver.HttpServer;
 import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
-import org.apache.sourcelume.registry.runtime.quarkus.config.SourcelumeAtlasProperties;
+import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

@@ -51,6 +51,9 @@
         <module>sourcelume-registry-typedefs</module>
         <module>sourcelume-registry-common</module>
         <module>sourcelume-registry-core</module>
+        <!-- Atlas REST adapter implementing the core AtlasAdapter SPI, shared
+             by the REST runtime and the ingest worker. -->
+        <module>sourcelume-registry-atlas-adapter</module>
         <!-- Validation plugins: discovered via the core RecordValidator SPI
              (ServiceLoader), each owning its validation machinery. -->
         <module>sourcelume-registry-validation-jsonschema</module>
@@ -63,6 +66,11 @@
 
     <properties>
         <!-- Java 21 baseline (LTS). See dev-list consensus, September 2026. -->
+        <!-- Quarkus version pin: the parent itself stays framework-free (no
+             Quarkus BOM import here), but the runtime modules share this pin
+             so the version cannot drift between them. Each runtime module
+             imports the BOM in its own dependencyManagement. -->
+        <quarkus.version>3.33.3</quarkus.version>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -146,6 +154,11 @@
             <dependency>
                 <groupId>org.apache.sourcelume</groupId>
                 <artifactId>sourcelume-registry-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.sourcelume</groupId>
+                <artifactId>sourcelume-registry-atlas-adapter</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

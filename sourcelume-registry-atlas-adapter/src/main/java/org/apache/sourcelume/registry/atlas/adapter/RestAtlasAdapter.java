@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.sourcelume.registry.runtime.quarkus.adapter;
+package org.apache.sourcelume.registry.atlas.adapter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,7 +27,7 @@ import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.core.AtlasAdapter;
 import org.apache.sourcelume.registry.core.AtlasAdapter.TypeDefinitionModel;
 import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
-import org.apache.sourcelume.registry.runtime.quarkus.config.SourcelumeAtlasProperties;
+import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
