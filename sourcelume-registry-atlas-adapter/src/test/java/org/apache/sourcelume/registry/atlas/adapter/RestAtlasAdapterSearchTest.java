@@ -146,7 +146,8 @@ class RestAtlasAdapterSearchTest {
                 .path("entities").get(0).path("attributes");
         assertEquals("PENDING", attributes.path("recordStatus").asText());
         assertEquals("{\"id\": \"https://example.org/records/one\"}", attributes.path("rawJsonLd").asText());
-        assertTrue(attributes.has("validationIssues"));
+        // The issues attribute must reach the wire with its exact value (see CLEARED_VALIDATION_ISSUES).
+        assertEquals("[{\"message\": \"m\"}]", attributes.path("validationIssues").asText());
     }
 
     // --- stub helpers ---

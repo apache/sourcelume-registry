@@ -81,8 +81,13 @@ public class IngestScheduler {
     private void processOne(SourcelumeDatasetDto dataset) {
         try {
             IngestResult result = ingestService.process(dataset);
-            log.info("Ingested {}: {} ({} validation issue(s))", result.qualifiedName(), result.status(),
-                    result.validation().issues().size());
+            if (result.validation() == null) {
+                log.info("Skipped {}: changed since the poll — stays {} and is picked up again",
+                        result.qualifiedName(), result.status());
+            } else {
+                log.info("Ingested {}: {} ({} validation issue(s))", result.qualifiedName(), result.status(),
+                        result.validation().issues().size());
+            }
         } catch (Exception e) {
             // No status reset, no retry bookkeeping: the record stays
             // PENDING and is picked up again on the next tick.

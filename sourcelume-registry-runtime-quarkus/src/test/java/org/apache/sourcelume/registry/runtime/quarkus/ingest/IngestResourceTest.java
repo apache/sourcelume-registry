@@ -124,7 +124,8 @@ class IngestResourceTest {
         SourcelumeDatasetDto stored = fake.store.get(RECORD_ID);
         assertEquals(RecordStatus.PENDING, stored.getRecordStatus());
         assertEquals(VALID_RECORD, stored.getRawJsonLd());
-        assertNull(stored.getValidationIssues(), "issues are cleared on resubmission");
+        assertEquals(SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES, stored.getValidationIssues(),
+                "issues are explicitly cleared on resubmission — Atlas upserts merge attributes");
     }
 
     @Test
@@ -161,6 +162,20 @@ class IngestResourceTest {
         assertEquals(RECORD_ID, body.qualifiedName());
         assertEquals(RecordStatus.INCOMPLETE, body.recordStatus());
         assertEquals("[{\"message\": \"missing license\"}]", body.validationIssues());
+    }
+
+    @Test
+    void statusHidesTheClearedIssuesSentinel() {
+        // A resubmitted PENDING record stores the cleared sentinel; the
+        // status view must not surface it as if it were a verdict.
+        SourcelumeDatasetDto resubmitted = dataset(RECORD_ID, RecordStatus.PENDING);
+        resubmitted.setValidationIssues(SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES);
+        fake.store.put(RECORD_ID, resubmitted);
+
+        var response = resource.status(RECORD_ID);
+
+        IngestResource.RecordResponse body = (IngestResource.RecordResponse) response.getEntity();
+        assertNull(body.validationIssues());
     }
 
     @Test

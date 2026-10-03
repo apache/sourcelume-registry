@@ -65,12 +65,28 @@ public class IngestServiceImpl implements IngestService {
     public IngestResult process(SourcelumeDatasetDto pendingDataset) {
         Objects.requireNonNull(pendingDataset, "pendingDataset");
 
-        ValidationResult validation = validatorChain.validate(pendingDataset.getRawJsonLd());
-        SourcelumeDatasetDto promoted = validation.conforms() ? promoteToActive(pendingDataset)
-                : markIncomplete(pendingDataset, validation);
+        // The polled snapshot may be stale: a corrected resubmission can
+        // land between the poll and this write. Re-read and only proceed if
+        // the record is unchanged — otherwise skip: a verdict derived from
+        // the old document must never overwrite a fresh submission, and the
+        // next poll picks up the new state anyway.
+        SourcelumeDatasetDto current = atlasAdapter.getDatasetByQualifiedName(pendingDataset.getQualifiedName());
+        if (!isStillThePolledRecord(pendingDataset, current)) {
+            return new IngestResult(pendingDataset.getQualifiedName(), RecordStatus.PENDING, null);
+        }
+
+        ValidationResult validation = validatorChain.validate(current.getRawJsonLd());
+        SourcelumeDatasetDto promoted = validation.conforms() ? promoteToActive(current)
+                : markIncomplete(current, validation);
 
         atlasAdapter.createOrUpdateDatasetEntity(promoted);
         return new IngestResult(promoted.getQualifiedName(), promoted.getRecordStatus(), validation);
+    }
+
+    private static boolean isStillThePolledRecord(SourcelumeDatasetDto polled, SourcelumeDatasetDto current) {
+        return current != null
+                && current.getRecordStatus() == RecordStatus.PENDING
+                && Objects.equals(current.getRawJsonLd(), polled.getRawJsonLd());
     }
 
     private SourcelumeDatasetDto promoteToActive(SourcelumeDatasetDto pending) {
@@ -82,6 +98,8 @@ public class IngestServiceImpl implements IngestService {
         active.setGuid(pending.getGuid());
         active.setRecordStatus(RecordStatus.ACTIVE);
         active.setRawJsonLd(pending.getRawJsonLd());
+        // Explicit clear — see CLEARED_VALIDATION_ISSUES.
+        active.setValidationIssues(SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES);
         return active;
     }
 

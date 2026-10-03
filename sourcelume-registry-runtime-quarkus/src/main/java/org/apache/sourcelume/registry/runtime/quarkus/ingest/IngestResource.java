@@ -17,6 +17,7 @@
 
 package org.apache.sourcelume.registry.runtime.quarkus.ingest;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
@@ -82,6 +83,10 @@ public class IngestResource {
         pending.setQualifiedName(recordId);
         pending.setRecordStatus(RecordStatus.PENDING);
         pending.setRawJsonLd(rawJsonLd);
+        if (existing != null) {
+            // Explicit clear — see CLEARED_VALIDATION_ISSUES.
+            pending.setValidationIssues(SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES);
+        }
         atlasAdapter.createOrUpdateDatasetEntity(pending);
 
         return Response.status(202)
@@ -114,14 +119,22 @@ public class IngestResource {
     public record ConflictResponse(String qualifiedName, RecordStatus recordStatus) {
     }
 
-    /** Wire DTO for the status view of a stored record. */
+    /**
+     * Wire DTO for the status view of a stored record. Absent fields mean
+     * "not set on the record yet"; issues are only reported for INCOMPLETE —
+     * the cleared sentinel is an internal storage detail.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record RecordResponse(String qualifiedName, RecordStatus recordStatus, String name,
             String licenseId, String sourceUri, String validationIssues) {
 
         static RecordResponse of(SourcelumeDatasetDto dataset) {
+            String issues = dataset.getValidationIssues();
+            if (SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES.equals(issues)) {
+                issues = null;
+            }
             return new RecordResponse(dataset.getQualifiedName(), dataset.getRecordStatus(),
-                    dataset.getName(), dataset.getLicenseId(), dataset.getSourceUri(),
-                    dataset.getValidationIssues());
+                    dataset.getName(), dataset.getLicenseId(), dataset.getSourceUri(), issues);
         }
     }
 
