@@ -1,0 +1,24 @@
+{
+  "@context": "https://sourcelume.apache.org/context/0.0.1/sourcelume.jsonld",
+  "id": "https://sourcelume.apache.org/records/invalid-missing-license",
+  "type": "ProvenanceRecord",
+  "identifier": "https://example.org/datasets/invalid-missing-license",
+  "name": "Record without a license",
+  "creator": [
+    {
+      "type": "schema:Organization",
+      "name": "Example Organization"
+    }
+  ],
+  "created": "2026-10-04T00:00:00Z",
+  "added": "2026-10-04T00:00:00Z",
+  "contentCreated": "2026-10-04T00:00:00Z",
+  "origin": "Non-conformant on purpose: the license is missing.",
+  "custodyChain": [
+    {
+      "agent": "https://example.org/",
+      "action": "created",
+      "startTime": "2026-10-04T00:00:00Z"
+    }
+  ]
+}
