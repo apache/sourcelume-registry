@@ -1,0 +1,25 @@
+{
+  "@context": "https://sourcelume.apache.org/context/0.0.1/sourcelume.jsonld",
+  "id": "https://sourcelume.apache.org/records/bad uri",
+  "type": "ProvenanceRecord",
+  "identifier": "https://example.org/datasets/bad-uri",
+  "name": "Record with a malformed URI",
+  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+  "creator": [
+    {
+      "type": "schema:Organization",
+      "name": "Example Organization"
+    }
+  ],
+  "created": "2026-09-08T00:00:00Z",
+  "added": "2026-09-08T00:00:00Z",
+  "contentCreated": "2026-09-08T00:00:00Z",
+  "origin": "The record id is not a valid URI (contains a space).",
+  "custodyChain": [
+    {
+      "agent": "https://example.org/",
+      "action": "created",
+      "startTime": "2026-09-08T00:00:00Z"
+    }
+  ]
+}
