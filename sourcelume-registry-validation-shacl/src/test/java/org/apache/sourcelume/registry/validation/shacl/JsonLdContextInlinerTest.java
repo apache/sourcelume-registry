@@ -116,6 +116,17 @@ class JsonLdContextInlinerTest {
         assertTrue(result.refusals().get(0).contains("https://attacker.example/c.jsonld"));
     }
 
+    /** C1 regression: scoped contexts as arrays of references fetch remotely too. */
+    @Test
+    void termScopedContextArrayReferenceIsRefused() throws Exception {
+        JsonLdContextInliner.InlineResult result = inliner.inline(
+                "{\"@context\": {\"license\": {\"@id\": \"http://purl.org/dc/terms/license\","
+                        + " \"@context\": [\"https://attacker.example/c.jsonld\"]}}}");
+        assertNull(result.document());
+        assertTrue(result.refusals().get(0).contains("term-scoped"));
+        assertTrue(result.refusals().get(0).contains("https://attacker.example/c.jsonld"));
+    }
+
     @Test
     void nestedScopedContextObjectIsScannedRecursively() throws Exception {
         // term definition -> scoped context object -> term definition with
@@ -181,6 +192,28 @@ class JsonLdContextInlinerTest {
         JsonNode node = MAPPER.readTree(result.document());
         assertTrue(node.get("@context").isObject());
         assertTrue(node.at("/creator/0/@context").isObject());
+    }
+
+    /** I1 regression: many distinct unknown references must not amplify into refusals. */
+    @Test
+    void refusalReportingIsCapped() throws Exception {
+        StringBuilder doc = new StringBuilder("{");
+        doc.append("\"@context\": \"").append(CONTEXT_RESOURCE).append("\",");
+        doc.append("\"creator\": [");
+        int distinctUnknown = JsonLdContextInliner.MAX_REPORTED_REFUSALS + 5;
+        for (int i = 0; i < distinctUnknown; i++) {
+            if (i > 0) {
+                doc.append(',');
+            }
+            doc.append("{\"@context\": \"https://unknown-").append(i).append(".example/ctx\"}");
+        }
+        doc.append("]}");
+        JsonLdContextInliner.InlineResult result = inliner.inline(doc.toString());
+        assertNull(result.document());
+        assertEquals(JsonLdContextInliner.MAX_REPORTED_REFUSALS + 1,
+                result.refusals().size());
+        assertTrue(result.refusals().get(JsonLdContextInliner.MAX_REPORTED_REFUSALS)
+                .contains("more refusals suppressed"));
     }
 
     @Test

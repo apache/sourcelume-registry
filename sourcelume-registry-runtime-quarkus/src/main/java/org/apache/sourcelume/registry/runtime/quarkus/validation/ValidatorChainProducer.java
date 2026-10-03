@@ -16,8 +16,11 @@
  */
 package org.apache.sourcelume.registry.runtime.quarkus.validation;
 
+import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.inject.Produces;
+import jakarta.inject.Inject;
 import org.apache.sourcelume.registry.core.validation.ValidatorChain;
 
 /**
@@ -30,9 +33,27 @@ import org.apache.sourcelume.registry.core.validation.ValidatorChain;
  * leaving the registry silently accepting unvalidated records. There is
  * no opt-out switch — a registry that skips validation contradicts its
  * purpose (verifiable provenance).
+ *
+ * <p>CDI producers of {@code @ApplicationScoped} scope are created lazily
+ * on first access; observing {@link StartupEvent} forces discovery at
+ * boot, so a mispackaged registry fails while starting, not on the first
+ * validation request.
  */
 @ApplicationScoped
 public class ValidatorChainProducer {
+
+    /** Client proxy to the produced chain; touching it at startup forces discovery. */
+    @Inject
+    ValidatorChain validatorChain;
+
+    void onStart(@Observes StartupEvent event) {
+        // CDI creates this bean for the StartupEvent observer; touching the
+        // (proxied) chain field forces plugin discovery (and schema/shapes
+        // parsing) at boot - exactly once, cached for all later injection
+        // points. If no plugins are on the classpath, discover() throws and
+        // aborts startup instead of failing on the first validation request.
+        validatorChain.validators();
+    }
 
     /**
      * Produces the application-wide validator chain. The plugins are
