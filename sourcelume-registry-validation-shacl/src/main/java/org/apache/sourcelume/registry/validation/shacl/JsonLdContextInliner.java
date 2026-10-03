@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Inlines the bundled sourcelume JSON-LD context into a document before
@@ -35,26 +36,53 @@ import java.util.List;
  * on network access and would allow ingest payloads to direct the validator
  * at arbitrary hosts (SSRF). Instead, any reference ending in the bundled
  * context resource path is replaced with the context carried in the spec
- * artifact; any other string reference is reported as unknown and the
- * document is refused.
+ * artifact; any other context reference is refused.
  *
- * <p>Inline context objects are passed through untouched - they are already
- * local and their term definitions are visible to the RDF parser.
+ * <p>Refused - not just unrecognized - are all constructs that would make the
+ * RDF parser retrieve a remote document, so the offline guarantee is
+ * structural rather than pattern-based. A JSON-LD processor only ever
+ * retrieves documents for string {@code @context} references, for
+ * {@code @import} inside contexts, and for term-scoped {@code @context}
+ * references inside term definitions; all three are covered here:
+ * <ul>
+ *   <li>string {@code @context} references anywhere in the document must end
+ *       in the bundled context resource path (anything else is refused),</li>
+ *   <li>{@code @import} inside an inline context is refused outright, and</li>
+ *   <li>term-scoped {@code @context} references are refused (scoped context
+ *       <em>objects</em> are legal and scanned recursively).</li>
+ * </ul>
+ *
+ * <p>Inline context objects are passed through unchanged otherwise: they are
+ * already local, and their term definitions are visible to the RDF parser.
+ * The number of replacements is capped: an ingest-controlled document made
+ * of repeated context references would otherwise be amplified by the full
+ * context payload per occurrence and exhaust heap before validation runs.
+ * Instances are stateless; all per-document state lives in the
+ * {@link #inline} call.
  */
 final class JsonLdContextInliner {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
+     * Hard cap on how often the bundled context may be inlined into one
+     * document. Legitimate records use one; a document near the cap is
+     * either hostile or broken, and refusing bounds the memory the
+     * inlined document can occupy.
+     */
+    static final int MAX_CONTEXT_REPLACEMENTS = 64;
+
+    /**
      * The result of inlining a document.
      *
-     * @param document        the inlined document, or {@code null} if inlining was refused
-     * @param unknownContexts string context references that could not be resolved locally
-     * @param hasAnyContext   whether the document contained any {@code @context} at all
+     * @param document      the inlined document, or {@code null} if inlining was refused
+     * @param refusals      human-readable reasons why the document was refused,
+     *                      empty if inlining succeeded
+     * @param hasAnyContext whether the document contained any {@code @context} at all
      */
-    record InlineResult(String document, List<String> unknownContexts, boolean hasAnyContext) {
-        static InlineResult unknown(List<String> unknownContexts, boolean hasAnyContext) {
-            return new InlineResult(null, List.copyOf(unknownContexts), hasAnyContext);
+    record InlineResult(String document, List<String> refusals, boolean hasAnyContext) {
+        static InlineResult refused(List<String> refusals, boolean hasAnyContext) {
+            return new InlineResult(null, List.copyOf(refusals), hasAnyContext);
         }
 
         static InlineResult inlined(String document) {
@@ -81,67 +109,141 @@ final class JsonLdContextInliner {
      * Inlines the bundled context into every reference to it.
      *
      * @param jsonLd the raw document
-     * @return the inlined document, or the list of unknown references
+     * @return the inlined document, or the reasons it was refused
      * @throws JsonProcessingException if the document is not valid JSON
      */
     InlineResult inline(String jsonLd) throws JsonProcessingException {
         JsonNode root = MAPPER.readTree(jsonLd);
-        List<String> unknown = new ArrayList<>();
+        List<String> refusals = new ArrayList<>();
         boolean[] hasContext = {false};
-        walkValue(root, unknown, hasContext);
+        int[] replacements = {0};
+        walkValue(root, refusals, hasContext, replacements);
         if (!hasContext[0]) {
-            return InlineResult.unknown(unknown, false);
+            return InlineResult.refused(refusals, false);
         }
-        if (!unknown.isEmpty()) {
-            return InlineResult.unknown(unknown, true);
+        if (!refusals.isEmpty()) {
+            return InlineResult.refused(refusals, true);
         }
         return InlineResult.inlined(MAPPER.writeValueAsString(root));
     }
 
-    private void walk(ObjectNode node, List<String> unknown, boolean[] hasContext) {
+    private void walkValue(JsonNode value, List<String> refusals,
+                           boolean[] hasContext, int[] replacements) {
+        if (value.isObject()) {
+            walk((ObjectNode) value, refusals, hasContext, replacements);
+        } else if (value.isArray()) {
+            for (JsonNode element : (ArrayNode) value) {
+                walkValue(element, refusals, hasContext, replacements);
+            }
+        }
+    }
+
+    private void walk(ObjectNode node, List<String> refusals,
+                      boolean[] hasContext, int[] replacements) {
         JsonNode context = node.get("@context");
         if (context != null) {
             hasContext[0] = true;
-            node.replace("@context", processContext(context, unknown));
+            node.replace("@context",
+                    processContext(context, refusals, replacements));
         }
-        node.fieldNames().forEachRemaining(name -> {
-            if (!"@context".equals(name)) {
-                walkValue(node.get(name), unknown, hasContext);
-            }
-        });
-    }
-
-    private void walkValue(JsonNode value, List<String> unknown, boolean[] hasContext) {
-        if (value.isObject()) {
-            walk((ObjectNode) value, unknown, hasContext);
-        } else if (value.isArray()) {
-            for (JsonNode element : (ArrayNode) value) {
-                walkValue(element, unknown, hasContext);
+        for (Map.Entry<String, JsonNode> field : node.properties()) {
+            if (!"@context".equals(field.getKey())) {
+                walkValue(field.getValue(), refusals, hasContext, replacements);
             }
         }
     }
 
-    private JsonNode processContext(JsonNode context, List<String> unknown) {
+    /**
+     * Handles one {@code @context} value: replaces references to the bundled
+     * context, scans inline context objects for retrieval-triggering
+     * constructs, and refuses anything unexpected.
+     *
+     * @return the processed context value (replaced reference, or the
+     *         original for pass-through and refused cases)
+     */
+    private JsonNode processContext(JsonNode context, List<String> refusals,
+                                    int[] replacements) {
         if (context.isTextual()) {
-            return resolveReference(context.asText(), context, unknown);
+            return resolveReference(context.asText(), refusals, replacements);
         }
         if (context.isArray()) {
             ArrayNode resolved = MAPPER.createArrayNode();
             for (JsonNode element : (ArrayNode) context) {
-                resolved.add(element.isTextual()
-                        ? resolveReference(element.asText(), element, unknown)
-                        : element);
+                if (element.isTextual()) {
+                    resolved.add(resolveReference(element.asText(), refusals, replacements));
+                } else if (element.isObject()) {
+                    scanContextObject((ObjectNode) element, refusals);
+                    resolved.add(element);
+                } else {
+                    refusals.add("@context array elements must be strings or objects, not "
+                            + element.getNodeType());
+                    resolved.add(element);
+                }
             }
             return resolved;
         }
+        if (context.isObject()) {
+            scanContextObject((ObjectNode) context, refusals);
+            return context;
+        }
+        refusals.add("@context must be a string, array, or object, not "
+                + context.getNodeType());
         return context;
     }
 
-    private JsonNode resolveReference(String reference, JsonNode original, List<String> unknown) {
-        if (reference.endsWith(contextResource)) {
-            return contextPayload;
+    /**
+     * Recursively scans an inline context object. Refuses everything that
+     * would make the RDF parser retrieve a remote document: {@code @import}
+     * at any depth, and term-scoped {@code @context} references (scoped
+     * context objects are legal and scanned in turn).
+     */
+    private void scanContextObject(ObjectNode context, List<String> refusals) {
+        if (context.has("@import")) {
+            refusals.add("@import inside inline context: '"
+                    + context.get("@import") + "' (nothing is fetched)");
         }
-        unknown.add(reference);
-        return original;
+        for (Map.Entry<String, JsonNode> field : context.properties()) {
+            JsonNode value = field.getValue();
+            if ("@context".equals(field.getKey()) && value.isTextual()) {
+                refusals.add("term-scoped context reference '" + value.asText()
+                        + "' (nothing is fetched)");
+            } else {
+                scanContextValue(value, refusals);
+            }
+        }
+    }
+
+    /**
+     * Recursion into the values of an inline context (term definitions and
+     * scoped context objects nest arbitrarily).
+     */
+    private void scanContextValue(JsonNode value, List<String> refusals) {
+        if (value.isObject()) {
+            scanContextObject((ObjectNode) value, refusals);
+        } else if (value.isArray()) {
+            for (JsonNode element : (ArrayNode) value) {
+                scanContextValue(element, refusals);
+            }
+        }
+    }
+
+    /**
+     * Resolves one string context reference by inlining the bundled
+     * context payload (subject to the replacement cap). Anything else is
+     * refused - the returned value does not matter then, because a refusal
+     * rejects the whole document and the tree is never serialized.
+     */
+    private JsonNode resolveReference(String reference, List<String> refusals,
+                                      int[] replacements) {
+        if (!reference.endsWith(contextResource)) {
+            refusals.add("unknown context reference '" + reference
+                    + "' (only the bundled sourcelume context is accepted)");
+        } else if (++replacements[0] > MAX_CONTEXT_REPLACEMENTS
+                && replacements[0] == MAX_CONTEXT_REPLACEMENTS + 1) {
+            // report the cap breach once, not per additional reference
+            refusals.add("more than " + MAX_CONTEXT_REPLACEMENTS
+                    + " context references in one document");
+        }
+        return contextPayload;
     }
 }

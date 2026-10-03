@@ -116,10 +116,22 @@ public final class JsonSchemaRecordValidator implements RecordValidator {
         List<ValidationIssue> issues = errors.stream()
                 .map(error -> ValidationIssue.violation(
                         ID,
-                        error.getInstanceLocation() == null ? "/" : error.getInstanceLocation().toString(),
+                        instancePath(error),
                         error.getMessage()))
                 .toList();
         return ValidationResult.failed(issues);
+    }
+
+    /**
+     * networknt reports the root document as an empty JSON pointer; this
+     * stage normalizes it to "/" so callers get a uniform path vocabulary.
+     */
+    private static String instancePath(Error error) {
+        if (error.getInstanceLocation() == null) {
+            return "/";
+        }
+        String path = error.getInstanceLocation().toString();
+        return path.isEmpty() ? "/" : path;
     }
 
     private static JsonNode readTree(String json) {

@@ -117,6 +117,14 @@ public final class ValidatorChain {
             ValidationResult result = validator.validate(jsonLd);
             collected.addAll(result.issues());
             if (!result.conforms()) {
+                if (collected.isEmpty()) {
+                    // A plugin reporting non-conformance without any issue is
+                    // a plugin bug; synthesize an issue so callers always see
+                    // why the chain failed instead of a result that claims
+                    // failure but cannot explain it.
+                    collected.add(ValidationIssue.violation(validator.id(), "/",
+                            validator.id() + " reported non-conformance without issues"));
+                }
                 return new ValidationResult(false, List.copyOf(collected));
             }
         }
