@@ -21,6 +21,13 @@
 
     <modelVersion>4.0.0</modelVersion>
 
+    <parent>
+        <groupId>org.apache</groupId>
+        <artifactId>apache</artifactId>
+        <version>39</version>
+        <relativePath/>
+    </parent>
+
     <groupId>org.apache.sourcelume</groupId>
     <artifactId>sourcelume-registry</artifactId>
     <version>0.0.1-SNAPSHOT</version>
@@ -71,9 +78,6 @@
         <slf4j.version>2.0.16</slf4j.version>
         <junit.version>5.11.4</junit.version>
         <sourcelume-spec.version>0.0.1-SNAPSHOT</sourcelume-spec.version>
-
-        <!-- Plugin versions -->
-        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -138,9 +142,10 @@
     <build>
         <pluginManagement>
             <plugins>
+                <!-- Version comes from the Apache parent POM; only the release
+                     baseline is pinned here. -->
                 <plugin>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>${maven-compiler-plugin.version}</version>
                     <configuration>
                         <release>${maven.compiler.release}</release>
                     </configuration>
