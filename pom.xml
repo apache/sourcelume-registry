@@ -152,6 +152,27 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+
+        <plugins>
+            <!--
+                RAT enforces ASF license headers on every build. The Apache
+                parent only runs it in the apache-release profile; binding it
+                here makes `mvn verify` (and CI) fail on missing headers.
+            -->
+            <plugin>
+                <groupId>org.apache.rat</groupId>
+                <artifactId>apache-rat-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>rat-check</id>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <phase>validate</phase>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 
 </project>
