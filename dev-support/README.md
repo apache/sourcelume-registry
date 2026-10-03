@@ -15,6 +15,11 @@ The local development environment consists of:
 2. **Sourcelume Registry runtime**: the Quarkus application that connects to
    Atlas, registers the Sourcelume typedefs on startup, and exposes SmallRye
    Health readiness/liveness probes at `/q/health/{ready,live}` on port `8082`.
+3. **Sourcelume ingest worker**: a headless companion that polls Atlas for
+   `PENDING` records (submitted via `POST /records`), validates them with the
+   plugin chain, and promotes them to `ACTIVE`/`INCOMPLETE` — see
+   `docs/ingest.md`. Runs in the same compose stack (`docker-compose.yml` at
+   the repo root), driven by the same Atlas environment variables.
 3. **Shared network**: a Docker bridge network named `sourcelume-network`
    connecting the Atlas containers and the Sourcelume services.
 

@@ -24,6 +24,11 @@ import java.util.Objects;
 
 /**
  * High-level DTO representing a sourcelume_dataset entity in Apache Atlas.
+ *
+ * <p>Besides the provenance attributes, the DTO carries the ingest lifecycle
+ * fields ({@link #getRecordStatus() recordStatus}, rawJsonLd, validationIssues)
+ * written by the ingest pipeline: the API stores the raw record with status
+ * PENDING, the worker promotes it to ACTIVE or INCOMPLETE.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -31,16 +36,34 @@ public class SourcelumeDatasetDto {
 
     public static final String TYPE_NAME = "sourcelume_dataset";
 
+    /**
+     * The value that explicitly clears the {@code validationIssues}
+     * attribute. Atlas upserts merge attributes — an absent attribute keeps
+     * its previous value — so every transition away from INCOMPLETE must
+     * write this sentinel instead of leaving the attribute unset, or the
+     * record would carry its old failure report into the next state.
+     */
+    public static final String CLEARED_VALIDATION_ISSUES = "[]";
+
     @NotBlank(message = "Qualified name is required")
     private String qualifiedName;
 
-    @NotBlank(message = "Dataset name is required")
+    /**
+     * Optional on purpose: a PENDING record has not been validated yet, so
+     * it may lack every mapped attribute — {@code name} is only written by
+     * the worker's ACTIVE promotion. (The mapped, validated view of a
+     * record is {@link ProvenanceRecordDto}, whose constraints are
+     * enforced by the JSON Schema stage.)
+     */
     private String name;
 
     private String description;
     private String sourceUri;
     private String licenseId;
     private String guid;
+    private RecordStatus recordStatus;
+    private String rawJsonLd;
+    private String validationIssues;
 
     public SourcelumeDatasetDto() {
     }
@@ -100,6 +123,30 @@ public class SourcelumeDatasetDto {
         this.guid = guid;
     }
 
+    public RecordStatus getRecordStatus() {
+        return recordStatus;
+    }
+
+    public void setRecordStatus(RecordStatus recordStatus) {
+        this.recordStatus = recordStatus;
+    }
+
+    public String getRawJsonLd() {
+        return rawJsonLd;
+    }
+
+    public void setRawJsonLd(String rawJsonLd) {
+        this.rawJsonLd = rawJsonLd;
+    }
+
+    public String getValidationIssues() {
+        return validationIssues;
+    }
+
+    public void setValidationIssues(String validationIssues) {
+        this.validationIssues = validationIssues;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -121,6 +168,7 @@ public class SourcelumeDatasetDto {
                 ", sourceUri='" + sourceUri + '\'' +
                 ", licenseId='" + licenseId + '\'' +
                 ", guid='" + guid + '\'' +
+                ", recordStatus=" + recordStatus +
                 '}';
     }
 }

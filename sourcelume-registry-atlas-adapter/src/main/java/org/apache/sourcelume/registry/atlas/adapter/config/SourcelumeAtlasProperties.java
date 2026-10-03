@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.sourcelume.registry.runtime.quarkus.config;
+package org.apache.sourcelume.registry.atlas.adapter.config;
 
 import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
