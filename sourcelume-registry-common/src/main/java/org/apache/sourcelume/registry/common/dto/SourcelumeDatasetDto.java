@@ -23,6 +23,11 @@ import java.util.Objects;
 
 /**
  * High-level DTO representing a sourcelume_dataset entity in Apache Atlas.
+ *
+ * <p>Besides the provenance attributes, the DTO carries the ingest lifecycle
+ * fields ({@link #getRecordStatus() recordStatus}, rawJsonLd, validationIssues)
+ * written by the ingest pipeline: the API stores the raw record with status
+ * PENDING, the worker promotes it to ACTIVE or INCOMPLETE.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -40,6 +45,9 @@ public class SourcelumeDatasetDto {
     private String sourceUri;
     private String licenseId;
     private String guid;
+    private RecordStatus recordStatus;
+    private String rawJsonLd;
+    private String validationIssues;
 
     public SourcelumeDatasetDto() {}
 
@@ -98,6 +106,30 @@ public class SourcelumeDatasetDto {
         this.guid = guid;
     }
 
+    public RecordStatus getRecordStatus() {
+        return recordStatus;
+    }
+
+    public void setRecordStatus(RecordStatus recordStatus) {
+        this.recordStatus = recordStatus;
+    }
+
+    public String getRawJsonLd() {
+        return rawJsonLd;
+    }
+
+    public void setRawJsonLd(String rawJsonLd) {
+        this.rawJsonLd = rawJsonLd;
+    }
+
+    public String getValidationIssues() {
+        return validationIssues;
+    }
+
+    public void setValidationIssues(String validationIssues) {
+        this.validationIssues = validationIssues;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -118,6 +150,7 @@ public class SourcelumeDatasetDto {
                 + name + '\'' + ", sourceUri='"
                 + sourceUri + '\'' + ", licenseId='"
                 + licenseId + '\'' + ", guid='"
-                + guid + '\'' + '}';
+                + guid + '\'' + ", recordStatus="
+                + recordStatus + '}';
     }
 }
