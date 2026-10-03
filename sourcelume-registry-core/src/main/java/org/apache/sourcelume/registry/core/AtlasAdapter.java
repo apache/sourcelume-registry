@@ -16,6 +16,8 @@
  */
 package org.apache.sourcelume.registry.core;
 
+import java.util.List;
+import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 
 /**
@@ -80,6 +82,17 @@ public interface AtlasAdapter {
      * @return the dataset DTO, or null
      */
     SourcelumeDatasetDto getDatasetByQualifiedName(String qualifiedName);
+
+    /**
+     * Returns the datasets currently in the given record status — the poll
+     * the ingest worker uses to pick up PENDING records. Implementations
+     * never return null; an empty list means nothing is waiting.
+     *
+     * @param status the record status to look for
+     * @param limit  the maximum number of datasets to return
+     * @return the datasets in the given status, at most {@code limit}, never null
+     */
+    List<SourcelumeDatasetDto> findDatasetsByStatus(RecordStatus status, int limit);
 
     /**
      * Backend-neutral holder for a parsed type definition model. The Atlas
