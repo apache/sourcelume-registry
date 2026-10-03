@@ -40,11 +40,6 @@
         dependencies in the reactor: the Quarkus BOM is imported here, in the
         module's own dependencyManagement. The parent POM stays framework-free.</description>
 
-  <properties>
-    <!-- Only place in the reactor that knows about Quarkus. -->
-    <quarkus.version>3.33.3</quarkus.version>
-  </properties>
-
   <dependencyManagement>
     <dependencies>
       <!-- Quarkus BOM owns the Quarkus + Jakarta + Jackson versions for
@@ -68,6 +63,11 @@
     </dependency>
     <dependency>
       <groupId>org.apache.sourcelume</groupId>
+      <artifactId>sourcelume-registry-atlas-adapter</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.sourcelume</groupId>
       <artifactId>sourcelume-registry-common</artifactId>
       <version>${project.version}</version>
     </dependency>
@@ -82,8 +82,8 @@
       <artifactId>sourcelume-spec</artifactId>
     </dependency>
     <!-- Validation plugins: runtime wiring discovers them via the
-         RecordValidator SPI (ServiceLoader); a registry without them
-         would silently accept everything, so they are hard deps here. -->
+             RecordValidator SPI (ServiceLoader); a registry without them
+             would silently accept everything, so they are hard deps here. -->
     <dependency>
       <groupId>org.apache.sourcelume</groupId>
       <artifactId>sourcelume-registry-validation-jsonschema</artifactId>

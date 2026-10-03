@@ -18,9 +18,9 @@ package org.apache.sourcelume.registry.runtime.quarkus.bootstrap;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
 import org.apache.sourcelume.registry.common.spec.SpecResourceLoader;
 import org.apache.sourcelume.registry.core.AtlasAdapter;
-import org.apache.sourcelume.registry.runtime.quarkus.config.SourcelumeAtlasProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
