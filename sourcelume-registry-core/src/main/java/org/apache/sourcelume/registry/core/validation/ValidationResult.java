@@ -38,15 +38,19 @@ public record ValidationResult(boolean conforms, List<ValidationIssue> issues) {
     public static final ValidationResult OK = new ValidationResult(true, Collections.emptyList());
 
     /**
-     * Convenience factory for a failed validation result. A null or empty
-     * issue list is treated as conforming: a failed result without issues
-     * would be indistinguishable from success for callers inspecting issues.
+     * Convenience factory for a failed validation result.
      *
-     * @param issues Non-empty list of issues (should contain at least one VIOLATION).
+     * <p>A null or empty issue list is rejected: a failed result without
+     * issues would be indistinguishable from success for callers inspecting
+     * issues, so silently mapping it to a conforming result would hide a
+     * plugin bug rather than surface it.
+     *
+     * @param issues Non-empty list of issues (must contain at least one VIOLATION).
+     * @throws IllegalArgumentException if the list is null or empty
      */
     public static ValidationResult failed(List<ValidationIssue> issues) {
         if (issues == null || issues.isEmpty()) {
-            return OK;
+            throw new IllegalArgumentException("A failed validation result requires at least one issue");
         }
         return new ValidationResult(false, issues);
     }

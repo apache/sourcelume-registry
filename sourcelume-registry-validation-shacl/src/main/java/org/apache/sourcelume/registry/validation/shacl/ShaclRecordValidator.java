@@ -22,6 +22,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.jena.graph.Graph;
+import org.apache.jena.graph.Node;
+import org.apache.jena.graph.NodeFactory;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFParser;
 import org.apache.jena.riot.RiotException;
@@ -30,6 +32,7 @@ import org.apache.jena.shacl.Shapes;
 import org.apache.jena.shacl.ValidationReport;
 import org.apache.jena.shacl.validation.ReportEntry;
 import org.apache.jena.shacl.validation.Severity;
+import org.apache.jena.vocabulary.RDF;
 import org.apache.sourcelume.registry.common.spec.SpecResourceLoader;
 import org.apache.sourcelume.registry.core.validation.RecordValidator;
 import org.apache.sourcelume.registry.core.validation.ValidationIssue;
@@ -64,6 +67,15 @@ public final class ShaclRecordValidator implements RecordValidator {
     public static final int ORDER = 200;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * The class the SHACL shapes target. Kept in sync with the spec context
+     * (which maps "ProvenanceRecord" to this IRI): after expansion, a graph
+     * without a node of this type would trivially conform to the shapes -
+     * for example when an inline context redefines the "type" term mapping.
+     * Such graphs are refused instead (see validate).
+     */
+    static final String PROVENANCE_RECORD_CLASS = "https://sourcelume.apache.org/ns/0.0.1#ProvenanceRecord";
 
     private final Shapes shapes;
     private final JsonLdContextInliner contextInliner;
@@ -125,14 +137,10 @@ public final class ShaclRecordValidator implements RecordValidator {
             return ValidationResult.failed(List.of(ValidationIssue.violation(
                     ID, "/@context", "Document has no @context; the sourcelume terms could not be expanded")));
         }
-        if (!inlineResult.unknownContexts().isEmpty()) {
+        if (!inlineResult.refusals().isEmpty()) {
             List<ValidationIssue> issues = new ArrayList<>();
-            for (String reference : inlineResult.unknownContexts()) {
-                issues.add(ValidationIssue.violation(
-                        ID,
-                        "/@context",
-                        "Unknown context reference '" + reference
-                                + "'; only the bundled sourcelume context is accepted"));
+            for (String refusal : inlineResult.refusals()) {
+                issues.add(ValidationIssue.violation(ID, "/@context", "Context refused: " + refusal));
             }
             return ValidationResult.failed(issues);
         }
@@ -146,6 +154,18 @@ public final class ShaclRecordValidator implements RecordValidator {
         } catch (RiotException e) {
             return ValidationResult.failed(
                     List.of(ValidationIssue.violation(ID, "/", "Not valid JSON-LD: " + e.getMessage())));
+        }
+
+        // Trivial-conformance guard: the shapes target sl:ProvenanceRecord
+        // nodes; a document whose context games (empty inline context,
+        // overridden "type" mapping) expand to no such node and would
+        // conform vacuously. Refuse instead of validating an empty focus set.
+        if (!graph.contains(Node.ANY, RDF.type.asNode(), NodeFactory.createURI(PROVENANCE_RECORD_CLASS))) {
+            return ValidationResult.failed(List.of(ValidationIssue.violation(
+                    ID,
+                    "/@type",
+                    "Document expands to no node of type " + PROVENANCE_RECORD_CLASS
+                            + "; SHACL validation would trivially conform")));
         }
 
         ValidationReport report = ShaclValidator.get().validate(shapes, graph);

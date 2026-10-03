@@ -50,8 +50,9 @@ class JsonSchemaRecordValidatorTest {
     void missingRequiredPropertyFails() {
         ValidationResult result = validator.validate(record("invalid-missing-license.jsonld"));
         assertFalse(result.conforms());
-        assertTrue(result.issues().stream()
-                .anyMatch(i -> i.path().startsWith("/license") || i.message().contains("license")));
+        // required-property errors are reported at the root object; the stage
+        // normalizes networknt's empty root pointer to "/"
+        assertTrue(result.issues().stream().anyMatch(i -> i.message().contains("license")));
     }
 
     /**

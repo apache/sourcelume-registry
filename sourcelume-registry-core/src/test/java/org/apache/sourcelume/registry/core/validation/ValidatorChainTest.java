@@ -93,8 +93,34 @@ class ValidatorChainTest {
     }
 
     @Test
-    void failedWithEmptyIssuesIsOk() {
-        assertEquals(ValidationResult.OK, ValidationResult.failed(List.of()));
+    void failedWithEmptyIssuesIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> ValidationResult.failed(List.of()));
+        assertThrows(IllegalArgumentException.class, () -> ValidationResult.failed(null));
+    }
+
+    @Test
+    void issuelessNonConformanceYieldsSynthesizedIssue() {
+        RecordValidator silent = new RecordValidator() {
+            @Override
+            public String id() {
+                return "silent";
+            }
+
+            @Override
+            public int order() {
+                return 100;
+            }
+
+            @Override
+            public ValidationResult validate(String jsonLd) {
+                return new ValidationResult(false, List.of());
+            }
+        };
+        ValidationResult result = ValidatorChain.of(List.of(silent)).validate("{}");
+        assertFalse(result.conforms());
+        assertEquals(1, result.issues().size());
+        assertEquals("silent", result.issues().get(0).validatorId());
+        assertTrue(result.issues().get(0).message().contains("without issues"));
     }
 
     private static final class Recorder {

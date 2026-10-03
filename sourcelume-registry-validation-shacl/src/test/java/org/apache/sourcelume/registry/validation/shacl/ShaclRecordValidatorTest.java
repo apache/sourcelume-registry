@@ -85,6 +85,58 @@ class ShaclRecordValidatorTest {
     }
 
     /**
+     * Retrieval trigger: @import inside an inline context would make the
+     * RDF parser fetch a remote document. Must be refused before expansion,
+     * never fetched (the fixture names an unroutable address; a fetch
+     * attempt would slow the test down or fail with a network error).
+     */
+    @Test
+    void importInsideInlineContextIsRefused() {
+        ValidationResult result = validator.validate(record("import-in-inline-context.jsonld"));
+        assertFalse(result.conforms());
+        assertTrue(result.issues().stream().anyMatch(i -> i.message().contains("@import")));
+    }
+
+    /** Retrieval trigger: term-scoped remote context reference. */
+    @Test
+    void termScopedContextReferenceIsRefused() {
+        ValidationResult result = validator.validate(record("scoped-context-ref.jsonld"));
+        assertFalse(result.conforms());
+        assertTrue(result.issues().stream().anyMatch(i -> i.message().contains("term-scoped")));
+    }
+
+    @Test
+    void nullContextValueIsRefused() {
+        ValidationResult result = validator.validate(record("null-context.jsonld"));
+        assertFalse(result.conforms());
+        assertTrue(result.issues().stream().anyMatch(i -> i.message().contains("must be a string, array, or object")));
+    }
+
+    /**
+     * Trivial-conformance guard: an empty inline context leaves all terms
+     * unexpanded, so no sl:ProvenanceRecord focus node exists and the
+     * shapes would conform vacuously. The validator must refuse instead.
+     */
+    @Test
+    void emptyInlineContextYieldsNoFocusNodeAndIsRefused() {
+        ValidationResult result = validator.validate(record("empty-inline-context.jsonld"));
+        assertFalse(result.conforms());
+        assertTrue(result.issues().stream().anyMatch(i -> i.message().contains("trivially conform")));
+    }
+
+    /**
+     * Same guard for the array form: an inline element overriding the
+     * "type" term mapping de-types the node even though the bundled
+     * context is referenced as well.
+     */
+    @Test
+    void contextArrayTypeOverrideIsRefusedByFocusNodeGuard() {
+        ValidationResult result = validator.validate(record("context-array-override.jsonld"));
+        assertFalse(result.conforms());
+        assertTrue(result.issues().stream().anyMatch(i -> i.message().contains("trivially conform")));
+    }
+
+    /**
      * Without a context the sourcelume terms could not be expanded; an
      * empty/untyped graph would trivially conform, which would be worse
      * than rejecting the document.

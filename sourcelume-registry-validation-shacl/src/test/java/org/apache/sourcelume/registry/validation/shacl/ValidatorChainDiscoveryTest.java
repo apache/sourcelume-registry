@@ -96,7 +96,21 @@ class ValidatorChainDiscoveryTest {
         ValidationResult result = chain.validate(record("unknown-remote-context.jsonld"));
         assertFalse(result.conforms());
         assertTrue(result.issues().stream()
-                .anyMatch(i -> "shacl".equals(i.validatorId()) && i.message().contains("Unknown context reference")));
+                .anyMatch(i -> "shacl".equals(i.validatorId()) && i.message().contains("unknown context reference")));
+    }
+
+    /**
+     * Adversarial case for the trivial-conformance guard: an empty inline
+     * context is invisible to JSON Schema (conforms) but expands to no
+     * focus node - the SHACL stage must refuse it rather than conform
+     * vacuously.
+     */
+    @Test
+    void emptyInlineContextPassesSchemaButIsRefusedByShacl() {
+        ValidationResult result = chain.validate(record("empty-inline-context.jsonld"));
+        assertFalse(result.conforms());
+        assertTrue(result.issues().stream().allMatch(i -> "shacl".equals(i.validatorId())));
+        assertTrue(result.issues().stream().anyMatch(i -> i.message().contains("trivially conform")));
     }
 
     private static String record(String name) {

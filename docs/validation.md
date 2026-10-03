@@ -98,9 +98,13 @@ expansion both claims map to `dct:license` on the same node — and the SHACL
 shapes reject it (`maxCount 1` and `nodeKind sh:IRI`).
 
 Both stages together see what the registry actually stores and queries: the
-JSON as submitted, and the RDF graph after expansion. The same document was
-verified against the Python oracle (pyshacl): same verdict, same constraint
-messages.
+JSON as submitted, and the RDF graph after expansion. The shared fixtures
+were run against the Python oracle (`tools/validate.py`) during development
+with matching verdicts; keeping that parity honest is exactly why the
+fixtures live next to the plugin tests. Each plugin module deliberately
+carries its own copies of the shared fixtures (module-local test resources,
+no cross-module test coupling) — when a fixture changes, update both
+copies and re-run the oracle.
 
 ## SHACL plugin: design decisions and findings
 
@@ -116,12 +120,25 @@ document names is not acceptable:
 
 The `JsonLdContextInliner` therefore replaces every reference ending in the
 bundled context resource path with the context shipped in the `sourcelume-spec`
-artifact and **refuses documents with any other string reference** ("Unknown
-context reference"). Inline context objects are passed through untouched.
-Documents without any `@context` are refused as well: their terms would not
-expand, the graph would be empty of sourcelume types, and an empty graph
-trivially *conforms* to the shapes — silently accepting garbage would be
-worse than rejecting the document.
+artifact and **refuses documents with any other string reference**. Inline
+context objects are passed through, but scanned recursively for every
+construct that would make the RDF parser retrieve a remote document —
+`@import` and term-scoped context references are refused, so the offline
+guarantee is structural (a JSON-LD processor only ever retrieves documents
+for exactly those constructs). The number of replacements is capped: a
+document made of repeated context references cannot amplify into the
+serialized form and exhaust heap. Documents without any `@context` at all,
+or with a `@context` that is neither a string, an array, nor an object, are
+refused as well: their terms would not expand, the graph would be empty of
+sourcelume types, and an empty graph trivially *conforms* to the shapes —
+silently accepting garbage would be worse than rejecting the document.
+
+The same trivial-conformance concern applies to context *games*: an inline
+context can redefine the `type` term mapping (or be simply empty), in which
+case the document expands to no `sl:ProvenanceRecord` node and the shapes
+would conform vacuously. The plugin therefore refuses any graph that,
+after expansion, contains no node typed `sl:ProvenanceRecord` — validation
+must never succeed by dropping the focus node.
 
 ### Format assertions (parity with jsonschema[format])
 
