@@ -15,7 +15,9 @@ repo creation, and initial discussion") the codebase is organized as a
   types in the core
 - **Pluggable record validation**: a `RecordValidator` SPI in the core;
   validation stages ship as separate plugin modules discovered via
-  ServiceLoader (see [docs/validation.md](docs/validation.md))
+  ServiceLoader, wired into the Quarkus runtime (fail-on-start) and exposed
+  as a pre-flight `POST /records/validate` endpoint (see
+  [docs/validation.md](docs/validation.md))
 - **CDI-style runtime**, leaning Quarkus (see dev-list thread)
 
 ## Layout
