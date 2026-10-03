@@ -1,3 +1,20 @@
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    (the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+-->
+
 # Sourcelume Dev Support: Apache Atlas & Quarkus Runtime
 
 This directory provides local developer infrastructure to stand up an Apache Atlas
@@ -15,6 +32,11 @@ The local development environment consists of:
 2. **Sourcelume Registry runtime**: the Quarkus application that connects to
    Atlas, registers the Sourcelume typedefs on startup, and exposes SmallRye
    Health readiness/liveness probes at `/q/health/{ready,live}` on port `8082`.
+3. **Sourcelume ingest worker**: a headless companion that polls Atlas for
+   `PENDING` records (submitted via `POST /records`), validates them with the
+   plugin chain, and promotes them to `ACTIVE`/`INCOMPLETE` — see
+   `docs/ingest.md`. Runs in the same compose stack (`docker-compose.yml` at
+   the repo root), driven by the same Atlas environment variables.
 3. **Shared network**: a Docker bridge network named `sourcelume-network`
    connecting the Atlas containers and the Sourcelume services.
 
