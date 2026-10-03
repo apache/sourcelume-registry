@@ -85,6 +85,17 @@
             <groupId>org.apache.sourcelume</groupId>
             <artifactId>sourcelume-spec</artifactId>
         </dependency>
+        <!-- Validation plugins: runtime wiring discovers them via the
+             RecordValidator SPI (ServiceLoader); a registry without them
+             would silently accept everything, so they are hard deps here. -->
+        <dependency>
+            <groupId>org.apache.sourcelume</groupId>
+            <artifactId>sourcelume-registry-validation-jsonschema</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.sourcelume</groupId>
+            <artifactId>sourcelume-registry-validation-shacl</artifactId>
+        </dependency>
 
         <!-- Quarkus runtime -->
         <dependency>
@@ -94,6 +105,10 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-jackson</artifactId>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>

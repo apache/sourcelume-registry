@@ -62,9 +62,32 @@ if (!result.conforms()) {
 }
 ```
 
-The "no ingest without validation" policy is deliberately not part of this
-change: it belongs to the future `IngestService` in the core, which will
-enforce it on top of the chain.
+The "no ingest without validation" policy itself belongs to the future
+`IngestService` in the core, which will enforce the chain on the way to
+persistence (throwing `SourcelumeValidationException`, see the core
+`ValidationService` for that contract).
+
+### Runtime wiring and the validation endpoint
+
+The Quarkus runtime depends on both plugin modules and wires the chain
+once at startup (`ValidatorChainProducer`): `ValidatorChain.discover()`
+throws when no plugins are found, so a mispackaged registry **fails to
+boot** instead of silently accepting unvalidated records. There is no
+switch to disable validation — a registry that skips it contradicts its
+purpose.
+
+That wiring backs a pre-flight endpoint, `POST /records/validate`:
+
+- Request: the raw JSON-LD record (`Content-Type: application/json`).
+- `200` with `{"conforms": true, "issues": []}` if the record passes both stages.
+- `422` with the issues of the first failing validator (the chain is
+  fail-fast) otherwise; malformed JSON is reported through the same
+  contract, never a 500.
+
+The response is a wire DTO, not the core `ValidationResult` — the HTTP
+contract stays stable while core evolves. The endpoint touches no backend
+(Atlas stays out of it on purpose), so producers can pre-flight records
+before submitting them; the same chain will enforce itself during ingest.
 
 ## Why two stages? The alias gap
 
