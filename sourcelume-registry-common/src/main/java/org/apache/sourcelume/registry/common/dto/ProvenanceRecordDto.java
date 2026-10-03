@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,7 +22,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
-
 import java.util.List;
 import java.util.Objects;
 
@@ -78,8 +77,7 @@ public class ProvenanceRecordDto {
     @Valid
     private List<CustodyEventDto> custodyChain;
 
-    public ProvenanceRecordDto() {
-    }
+    public ProvenanceRecordDto() {}
 
     public Object getContext() {
         return context;
@@ -232,11 +230,10 @@ public class ProvenanceRecordDto {
 
     @Override
     public String toString() {
-        return "ProvenanceRecordDto{" +
-                "id='" + id + '\'' +
-                ", identifier='" + identifier + '\'' +
-                ", name='" + name + '\'' +
-                ", license='" + license + '\'' +
-                '}';
+        return "ProvenanceRecordDto{" + "id='"
+                + id + '\'' + ", identifier='"
+                + identifier + '\'' + ", name='"
+                + name + '\'' + ", license='"
+                + license + '\'' + '}';
     }
 }

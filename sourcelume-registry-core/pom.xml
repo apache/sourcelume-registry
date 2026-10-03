@@ -15,34 +15,30 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
-    <modelVersion>4.0.0</modelVersion>
+  <modelVersion>4.0.0</modelVersion>
 
-    <parent>
-        <groupId>org.apache.sourcelume</groupId>
-        <artifactId>sourcelume-registry</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
-    </parent>
+  <parent>
+    <groupId>org.apache.sourcelume</groupId>
+    <artifactId>sourcelume-registry</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+  </parent>
 
-    <artifactId>sourcelume-registry-core</artifactId>
-    <name>Apache Sourcelume Registry - Core (API/SPI)</name>
-    <packaging>jar</packaging>
+  <artifactId>sourcelume-registry-core</artifactId>
+  <packaging>jar</packaging>
+  <name>Apache Sourcelume Registry - Core (API/SPI)</name>
 
-    <description>
-        Backend-neutral adapter SPI for the Sourcelume Registry. The
+  <description>Backend-neutral adapter SPI for the Sourcelume Registry. The
         AtlasAdapter interface exposes only Sourcelume types; backend wire
         formats and SDK specifics live in runtime modules implementing this
-        contract. Framework-free: no Spring, no Quarkus, no backend SDK.
-    </description>
+        contract. Framework-free: no Spring, no Quarkus, no backend SDK.</description>
 
-    <dependencies>
-        <dependency>
-            <groupId>org.apache.sourcelume</groupId>
-            <artifactId>sourcelume-registry-common</artifactId>
-        </dependency>
-    </dependencies>
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.sourcelume</groupId>
+      <artifactId>sourcelume-registry-common</artifactId>
+    </dependency>
+  </dependencies>
 
 </project>

@@ -14,25 +14,3 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.sourcelume.registry.runtime.quarkus;
-
-import io.quarkus.runtime.Quarkus;
-import io.quarkus.runtime.QuarkusApplication;
-import io.quarkus.runtime.annotations.QuarkusMain;
-
-/**
- * Quarkus entry point for the Sourcelume Registry runtime.
- *
- * <p>The actual startup work (spec verification + typedef registration) happens
- * in {@code AtlasBootstrapObserver}, observing the CDI startup event, followed
- * by the readiness check contributed to SmallRye Health.
- */
-@QuarkusMain
-public class SourcelumeRegistryApplication implements QuarkusApplication {
-
-    @Override
-    public int run(String... args) {
-        Quarkus.waitForExit();
-        return 0;
-    }
-}

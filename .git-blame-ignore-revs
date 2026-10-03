@@ -1,0 +1,5 @@
+# Commits to skip in git blame:
+# https://git-scm.com/docs/git-config#Documentation/git-config.txt-blameignoreRevsFile
+#
+# The one-off reformat when Spotless was introduced.
+c15094e5a779dea59a80fc4369d27903237c54f5
