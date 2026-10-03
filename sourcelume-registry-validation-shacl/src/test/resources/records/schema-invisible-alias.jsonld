@@ -1,0 +1,26 @@
+{
+  "@context": "https://sourcelume.apache.org/context/0.0.1/sourcelume.jsonld",
+  "id": "https://sourcelume.apache.org/records/alias-test",
+  "type": "ProvenanceRecord",
+  "identifier": "https://example.org/datasets/alias-test",
+  "name": "Record with a duplicated license claim under an alias IRI",
+  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+  "http://purl.org/dc/terms/license": "https://www.gnu.org/licenses/gpl-3.0.html",
+  "creator": [
+    {
+      "type": "schema:Organization",
+      "name": "Example Organization"
+    }
+  ],
+  "created": "2026-09-08T00:00:00Z",
+  "added": "2026-09-08T00:00:00Z",
+  "contentCreated": "2026-09-08T00:00:00Z",
+  "origin": "Two conflicting license claims: schema-invisible, caught by the SHACL stage.",
+  "custodyChain": [
+    {
+      "agent": "https://example.org/",
+      "action": "created",
+      "startTime": "2026-09-08T00:00:00Z"
+    }
+  ]
+}

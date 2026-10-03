@@ -148,6 +148,11 @@
                 <artifactId>sourcelume-registry-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.apache.sourcelume</groupId>
+                <artifactId>sourcelume-registry-validation-jsonschema</artifactId>
+                <version>${project.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 

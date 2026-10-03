@@ -66,10 +66,19 @@
             <groupId>org.apache.jena</groupId>
             <artifactId>jena-shacl</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.sourcelume</groupId>
+            <artifactId>sourcelume-registry-validation-jsonschema</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
