@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,20 +16,19 @@
  */
 package org.apache.sourcelume.registry.common.dto;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.Validation;
-import jakarta.validation.Validator;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.Set;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import java.util.List;
+import java.util.Set;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 class ProvenanceRecordDtoTest {
 
@@ -54,7 +53,8 @@ class ProvenanceRecordDtoTest {
         record.setContentCreated("2026-09-01T00:00:00Z");
         record.setOrigin("Generated from synthetic benchmark suite");
         record.setCreator(List.of(new CreatorDto("schema:Organization", "Apache Sourcelume", "originator")));
-        record.setCustodyChain(List.of(new CustodyEventDto("https://sourcelume.apache.org/agents/agent-1", "ingested", "2026-09-13T10:00:00Z")));
+        record.setCustodyChain(List.of(new CustodyEventDto(
+                "https://sourcelume.apache.org/agents/agent-1", "ingested", "2026-09-13T10:00:00Z")));
 
         String json = mapper.writeValueAsString(record);
         assertNotNull(json);

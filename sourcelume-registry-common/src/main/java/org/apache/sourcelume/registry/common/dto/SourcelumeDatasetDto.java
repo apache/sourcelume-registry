@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,7 +19,6 @@ package org.apache.sourcelume.registry.common.dto;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.constraints.NotBlank;
-
 import java.util.Objects;
 
 /**
@@ -42,8 +41,7 @@ public class SourcelumeDatasetDto {
     private String licenseId;
     private String guid;
 
-    public SourcelumeDatasetDto() {
-    }
+    public SourcelumeDatasetDto() {}
 
     public SourcelumeDatasetDto(String qualifiedName, String name, String sourceUri, String licenseId) {
         this.qualifiedName = qualifiedName;
@@ -115,12 +113,11 @@ public class SourcelumeDatasetDto {
 
     @Override
     public String toString() {
-        return "SourcelumeDatasetDto{" +
-                "qualifiedName='" + qualifiedName + '\'' +
-                ", name='" + name + '\'' +
-                ", sourceUri='" + sourceUri + '\'' +
-                ", licenseId='" + licenseId + '\'' +
-                ", guid='" + guid + '\'' +
-                '}';
+        return "SourcelumeDatasetDto{" + "qualifiedName='"
+                + qualifiedName + '\'' + ", name='"
+                + name + '\'' + ", sourceUri='"
+                + sourceUri + '\'' + ", licenseId='"
+                + licenseId + '\'' + ", guid='"
+                + guid + '\'' + '}';
     }
 }

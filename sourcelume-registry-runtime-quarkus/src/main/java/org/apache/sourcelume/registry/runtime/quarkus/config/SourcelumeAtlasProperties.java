@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,7 +18,6 @@ package org.apache.sourcelume.registry.runtime.quarkus.config;
 
 import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -71,7 +70,10 @@ public interface SourcelumeAtlasProperties {
                 try {
                     return Files.readString(path).trim();
                 } catch (Exception e) {
-                    throw new IllegalStateException("Failed to read password from file: " + passwordFile().get(), e);
+                    throw new IllegalStateException(
+                            "Failed to read password from file: "
+                                    + passwordFile().get(),
+                            e);
                 }
             }
         }

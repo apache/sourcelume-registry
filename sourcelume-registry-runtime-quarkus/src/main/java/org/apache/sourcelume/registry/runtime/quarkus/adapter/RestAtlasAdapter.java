@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,6 +22,17 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Base64;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.core.AtlasAdapter;
 import org.apache.sourcelume.registry.core.AtlasAdapter.TypeDefinitionModel;
@@ -29,18 +40,6 @@ import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.runtime.quarkus.config.SourcelumeAtlasProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.URL;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.Base64;
 
 /**
  * Thin REST client implementation of the framework-free
@@ -74,15 +73,15 @@ public class RestAtlasAdapter implements AtlasAdapter {
     public RestAtlasAdapter(SourcelumeAtlasProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
         this.objectMapper = objectMapper;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
+        this.httpClient =
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     }
 
     @Override
     public boolean isServerReady() {
         try {
-            HttpRequest req = baseRequest("GET", "/api/atlas/admin/version").GET().build();
+            HttpRequest req =
+                    baseRequest("GET", "/api/atlas/admin/version").GET().build();
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
             return resp.statusCode() == 200;
         } catch (Exception e) {
@@ -105,7 +104,8 @@ public class RestAtlasAdapter implements AtlasAdapter {
             byte[] bytes = in.readAllBytes();
             JsonNode root = objectMapper.readTree(bytes);
             int entityCount = root.has("entityDefs") && root.get("entityDefs").isArray()
-                    ? root.get("entityDefs").size() : 0;
+                    ? root.get("entityDefs").size()
+                    : 0;
             log.info("Loaded typedefs with {} entity definition(s) from {}", entityCount, resourcePath);
             return new TypeDefinitionModel(resourcePath, bytes, entityCount);
         } catch (IOException e) {
@@ -125,8 +125,8 @@ public class RestAtlasAdapter implements AtlasAdapter {
             if (resp.statusCode() == 200 || resp.statusCode() == 201) {
                 log.info("Successfully created Atlas typedefs");
                 int count = parseEntityDefCount(resp.body());
-                return new TypeDefinitionModel(typeDefs.getSourceResource(),
-                        resp.body().getBytes(StandardCharsets.UTF_8), count);
+                return new TypeDefinitionModel(
+                        typeDefs.getSourceResource(), resp.body().getBytes(StandardCharsets.UTF_8), count);
             }
             // Atlas returns 409/conflict when a typedef already exists — fall back to PUT (update).
             if (resp.statusCode() == 409 || resp.statusCode() == 400) {
@@ -135,14 +135,16 @@ public class RestAtlasAdapter implements AtlasAdapter {
                 if (putResp.statusCode() == 200 || putResp.statusCode() == 204) {
                     log.info("Successfully updated Atlas typedefs");
                     int count = parseEntityDefCount(putResp.body());
-                    return new TypeDefinitionModel(typeDefs.getSourceResource(),
-                            putResp.body().getBytes(StandardCharsets.UTF_8), count);
+                    return new TypeDefinitionModel(
+                            typeDefs.getSourceResource(), putResp.body().getBytes(StandardCharsets.UTF_8), count);
                 }
-                throw new AtlasAdapterException("Failed to register or update typedefs in Atlas: " + putResp.body(),
-                        putResp.statusCode(), null);
+                throw new AtlasAdapterException(
+                        "Failed to register or update typedefs in Atlas: " + putResp.body(),
+                        putResp.statusCode(),
+                        null);
             }
-            throw new AtlasAdapterException("Failed to register typedefs in Atlas: " + resp.body(),
-                    resp.statusCode(), null);
+            throw new AtlasAdapterException(
+                    "Failed to register typedefs in Atlas: " + resp.body(), resp.statusCode(), null);
         } catch (IOException e) {
             throw new AtlasAdapterException("I/O error registering typedefs: " + e.getMessage(), 500, e);
         } catch (InterruptedException e) {
@@ -173,8 +175,8 @@ public class RestAtlasAdapter implements AtlasAdapter {
             String body = objectMapper.writeValueAsString(wrapper);
             HttpResponse<String> resp = sendJson("POST", "/api/atlas/v2/entity/bulk", body);
             if (resp.statusCode() != 200 && resp.statusCode() != 201) {
-                throw new AtlasAdapterException("Failed to persist dataset entity to Atlas: " + resp.body(),
-                        resp.statusCode(), null);
+                throw new AtlasAdapterException(
+                        "Failed to persist dataset entity to Atlas: " + resp.body(), resp.statusCode(), null);
             }
             JsonNode root = objectMapper.readTree(resp.body());
             String guid = extractGuid(root);
@@ -193,16 +195,16 @@ public class RestAtlasAdapter implements AtlasAdapter {
     public SourcelumeDatasetDto getDatasetByQualifiedName(String qualifiedName) {
         try {
             String q = URLEncoder.encode(qualifiedName, StandardCharsets.UTF_8);
-            String path = "/api/atlas/v2/entity/bulk?typeName=" + SourcelumeDatasetDto.TYPE_NAME
-                    + "&attr:qualifiedName=" + q;
+            String path =
+                    "/api/atlas/v2/entity/bulk?typeName=" + SourcelumeDatasetDto.TYPE_NAME + "&attr:qualifiedName=" + q;
             HttpRequest req = baseRequest("GET", path).GET().build();
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() == 404) {
                 return null;
             }
             if (resp.statusCode() != 200) {
-                throw new AtlasAdapterException("Failed to fetch dataset entity from Atlas: " + resp.body(),
-                        resp.statusCode(), null);
+                throw new AtlasAdapterException(
+                        "Failed to fetch dataset entity from Atlas: " + resp.body(), resp.statusCode(), null);
             }
             JsonNode root = objectMapper.readTree(resp.body());
             JsonNode entities = root.path("entities");
@@ -252,7 +254,8 @@ public class RestAtlasAdapter implements AtlasAdapter {
         try {
             JsonNode root = objectMapper.readTree(body);
             return root.has("entityDefs") && root.get("entityDefs").isArray()
-                    ? root.get("entityDefs").size() : 0;
+                    ? root.get("entityDefs").size()
+                    : 0;
         } catch (Exception e) {
             return 0;
         }

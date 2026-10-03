@@ -15,27 +15,24 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
-    <modelVersion>4.0.0</modelVersion>
+  <modelVersion>4.0.0</modelVersion>
 
-    <parent>
-        <groupId>org.apache</groupId>
-        <artifactId>apache</artifactId>
-        <version>39</version>
-        <relativePath/>
-    </parent>
+  <parent>
+    <groupId>org.apache</groupId>
+    <artifactId>apache</artifactId>
+    <version>39</version>
+    <relativePath/>
+  </parent>
 
-    <groupId>org.apache.sourcelume</groupId>
-    <artifactId>sourcelume-registry</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
-    <packaging>pom</packaging>
-    <name>Apache Sourcelume Registry</name>
+  <groupId>org.apache.sourcelume</groupId>
+  <artifactId>sourcelume-registry</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>Apache Sourcelume Registry</name>
 
-    <description>
-        Apache Sourcelume Registry — framework-free core.
+  <description>Apache Sourcelume Registry — framework-free core.
 
         Per the dev-list consensus (September 2026, thread "Apache Sourcelume
         Registry repo creation, and initial discussion") the repository is
@@ -51,134 +48,133 @@
 
         Runtime modules (for example a Quarkus runtime providing a thin REST
         AtlasAdapter implementation) build on this core as separate modules.
-        Java 21 baseline.
-    </description>
+        Java 21 baseline.</description>
 
-    <modules>
-        <module>sourcelume-registry-typedefs</module>
-        <module>sourcelume-registry-common</module>
-        <module>sourcelume-registry-core</module>
-        <!-- Runtime modules own their framework dependencies; the parent stays
+  <modules>
+    <module>sourcelume-registry-typedefs</module>
+    <module>sourcelume-registry-common</module>
+    <module>sourcelume-registry-core</module>
+    <!-- Runtime modules own their framework dependencies; the parent stays
              framework-free. The Quarkus runtime imports the Quarkus BOM in its
              own dependencyManagement. -->
-        <module>sourcelume-registry-runtime-quarkus</module>
-    </modules>
+    <module>sourcelume-registry-runtime-quarkus</module>
+  </modules>
 
-    <properties>
-        <!-- Java 21 baseline (LTS). See dev-list consensus, September 2026. -->
-        <maven.compiler.release>21</maven.compiler.release>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+  <properties>
+    <!-- Java 21 baseline (LTS). See dev-list consensus, September 2026. -->
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
-        <!-- Dependency versions: no framework BOM, the core is framework-free -->
-        <jackson.version>2.18.0</jackson.version>
-        <jakarta.validation.version>3.0.2</jakarta.validation.version>
-        <hibernate-validator.version>8.0.1.Final</hibernate-validator.version>
-        <expressly.version>5.0.0</expressly.version>
-        <slf4j.version>2.0.16</slf4j.version>
-        <junit.version>5.11.4</junit.version>
-        <sourcelume-spec.version>0.0.1-SNAPSHOT</sourcelume-spec.version>
+    <!-- Dependency versions: no framework BOM, the core is framework-free -->
+    <jackson.version>2.18.0</jackson.version>
+    <jakarta.validation.version>3.0.2</jakarta.validation.version>
+    <hibernate-validator.version>8.0.1.Final</hibernate-validator.version>
+    <expressly.version>5.0.0</expressly.version>
+    <slf4j.version>2.0.16</slf4j.version>
+    <junit.version>5.11.4</junit.version>
+    <sourcelume-spec.version>0.0.1-SNAPSHOT</sourcelume-spec.version>
 
-        <!-- Plugin versions (formatting and style, same tools as sourcelume-spec) -->
-        <spotless-maven-plugin.version>2.44.5</spotless-maven-plugin.version>
-        <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
-        <checkstyle.version>10.26.1</checkstyle.version>
-    </properties>
+    <!-- Plugin versions (formatting and style, same tools as sourcelume-spec) -->
+    <spotless-maven-plugin.version>2.44.5</spotless-maven-plugin.version>
+    <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
+    <checkstyle.version>10.26.1</checkstyle.version>
+  </properties>
 
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>com.fasterxml.jackson</groupId>
-                <artifactId>jackson-bom</artifactId>
-                <version>${jackson.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.junit</groupId>
-                <artifactId>junit-bom</artifactId>
-                <version>${junit.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.sourcelume</groupId>
-                <artifactId>sourcelume-spec</artifactId>
-                <version>${sourcelume-spec.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>jakarta.validation</groupId>
-                <artifactId>jakarta.validation-api</artifactId>
-                <version>${jakarta.validation.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.hibernate.validator</groupId>
-                <artifactId>hibernate-validator</artifactId>
-                <version>${hibernate-validator.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.glassfish.expressly</groupId>
-                <artifactId>expressly</artifactId>
-                <version>${expressly.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.slf4j</groupId>
-                <artifactId>slf4j-api</artifactId>
-                <version>${slf4j.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.sourcelume</groupId>
-                <artifactId>sourcelume-registry-typedefs</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.sourcelume</groupId>
-                <artifactId>sourcelume-registry-common</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.sourcelume</groupId>
-                <artifactId>sourcelume-registry-core</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.sourcelume</groupId>
+        <artifactId>sourcelume-spec</artifactId>
+        <version>${sourcelume-spec.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>jakarta.validation</groupId>
+        <artifactId>jakarta.validation-api</artifactId>
+        <version>${jakarta.validation.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.hibernate.validator</groupId>
+        <artifactId>hibernate-validator</artifactId>
+        <version>${hibernate-validator.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.glassfish.expressly</groupId>
+        <artifactId>expressly</artifactId>
+        <version>${expressly.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.sourcelume</groupId>
+        <artifactId>sourcelume-registry-typedefs</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.sourcelume</groupId>
+        <artifactId>sourcelume-registry-common</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.sourcelume</groupId>
+        <artifactId>sourcelume-registry-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
-    <build>
-        <pluginManagement>
-            <plugins>
-                <!-- Version comes from the Apache parent POM; only the release
+  <build>
+    <pluginManagement>
+      <plugins>
+        <!-- Version comes from the Apache parent POM; only the release
                      baseline is pinned here. -->
-                <plugin>
-                    <artifactId>maven-compiler-plugin</artifactId>
-                    <configuration>
-                        <release>${maven.compiler.release}</release>
-                    </configuration>
-                </plugin>
-            </plugins>
-        </pluginManagement>
+        <plugin>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <configuration>
+            <release>${maven.compiler.release}</release>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
 
-        <plugins>
-            <!--
+    <plugins>
+      <!--
                 RAT enforces ASF license headers on every build. The Apache
                 parent only runs it in the apache-release profile; binding it
                 here makes `mvn verify` (and CI) fail on missing headers.
             -->
-            <plugin>
-                <groupId>org.apache.rat</groupId>
-                <artifactId>apache-rat-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>rat-check</id>
-                        <goals>
-                            <goal>check</goal>
-                        </goals>
-                        <phase>validate</phase>
-                    </execution>
-                </executions>
-            </plugin>
+      <plugin>
+        <groupId>org.apache.rat</groupId>
+        <artifactId>apache-rat-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>rat-check</id>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <phase>validate</phase>
+          </execution>
+        </executions>
+      </plugin>
 
-            <!--
+      <!--
                 Spotless owns formatting: palantir-java-format for Java,
                 license headers from dev/license-header.txt, and sortPom for
                 the poms. Checkstyle adds structural rules Spotless cannot
@@ -187,45 +183,45 @@
                 The check goals are bound in a follow-up commit once the
                 one-off reformat has landed; `mvn spotless:apply` fixes drift.
             -->
-            <plugin>
-                <groupId>com.diffplug.spotless</groupId>
-                <artifactId>spotless-maven-plugin</artifactId>
-                <version>${spotless-maven-plugin.version}</version>
-                <configuration>
-                    <java>
-                        <palantirJavaFormat/>
-                        <importOrder/>
-                        <removeUnusedImports/>
-                        <licenseHeader>
-                            <file>${maven.multiModuleProjectDirectory}/dev/license-header.txt</file>
-                        </licenseHeader>
-                    </java>
-                    <pom>
-                        <sortPom>
-                            <expandEmptyElements>false</expandEmptyElements>
-                        </sortPom>
-                    </pom>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-checkstyle-plugin</artifactId>
-                <version>${maven-checkstyle-plugin.version}</version>
-                <configuration>
-                    <configLocation>${maven.multiModuleProjectDirectory}/dev/checkstyle.xml</configLocation>
-                    <includeTestSourceDirectory>true</includeTestSourceDirectory>
-                    <consoleOutput>true</consoleOutput>
-                    <failOnViolation>true</failOnViolation>
-                </configuration>
-                <dependencies>
-                    <dependency>
-                        <groupId>com.puppycrawl.tools</groupId>
-                        <artifactId>checkstyle</artifactId>
-                        <version>${checkstyle.version}</version>
-                    </dependency>
-                </dependencies>
-            </plugin>
-        </plugins>
-    </build>
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>${spotless-maven-plugin.version}</version>
+        <configuration>
+          <java>
+            <palantirJavaFormat/>
+            <importOrder/>
+            <removeUnusedImports/>
+            <licenseHeader>
+              <file>${maven.multiModuleProjectDirectory}/dev/license-header.txt</file>
+            </licenseHeader>
+          </java>
+          <pom>
+            <sortPom>
+              <expandEmptyElements>false</expandEmptyElements>
+            </sortPom>
+          </pom>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <version>${maven-checkstyle-plugin.version}</version>
+        <configuration>
+          <configLocation>${maven.multiModuleProjectDirectory}/dev/checkstyle.xml</configLocation>
+          <includeTestSourceDirectory>true</includeTestSourceDirectory>
+          <consoleOutput>true</consoleOutput>
+          <failOnViolation>true</failOnViolation>
+        </configuration>
+        <dependencies>
+          <dependency>
+            <groupId>com.puppycrawl.tools</groupId>
+            <artifactId>checkstyle</artifactId>
+            <version>${checkstyle.version}</version>
+          </dependency>
+        </dependencies>
+      </plugin>
+    </plugins>
+  </build>
 
 </project>

@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,11 +16,11 @@
  */
 package org.apache.sourcelume.registry.runtime.quarkus.health;
 
-import io.quarkus.test.junit.QuarkusTest;
-import org.junit.jupiter.api.Test;
-
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
+
+import io.quarkus.test.junit.QuarkusTest;
+import org.junit.jupiter.api.Test;
 
 /**
  * Tests the readiness probe wiring: the {@code atlas} readiness check is
@@ -33,8 +33,8 @@ class AtlasReadinessCheckTest {
 
     @Test
     void readinessShouldReportAtlasDownWithoutAtlas() {
-        given()
-                .when().get("/q/health/ready")
+        given().when()
+                .get("/q/health/ready")
                 .then()
                 .statusCode(503)
                 .body("status", equalTo("DOWN"))
