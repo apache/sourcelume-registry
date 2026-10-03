@@ -128,7 +128,10 @@ for the compose setup. The loop is configured via:
 
 A tick never runs concurrently with itself (`concurrentExecution = SKIP`).
 A failing record is logged and retried on the next tick; it never blocks
-the rest of the batch. The worker refuses to start without validator
+the rest of the batch. Before validating, the worker re-reads each polled
+record; a record that changed since the poll (e.g. a corrected
+resubmission) is skipped and picked up again on the next tick, so a stale
+snapshot never overwrites a fresh submission. The worker refuses to start without validator
 plugins on the classpath (fail-on-start, same semantics as the REST
 runtime): a worker that silently promoted unvalidated records would
 defeat the registry's core guarantee.
@@ -139,9 +142,19 @@ defeat the registry's core guarantee.
   here; it is a spec-level question (0.2+), expected to be modeled as
   relationships plus query-time joins — never as stored aggregate state.
 - **Claiming/locking** for multiple workers against the same store is
-  deferred: with a single worker per registry the poll loop is
-  race-free; concurrent workers may pick up the same `PENDING` record,
-  which is idempotent (same validation, same promotion).
+  deferred. Even with a single worker there is a poll-to-write window: a
+  corrected resubmission landing mid-tick must not be overwritten by a
+  verdict derived from the stale snapshot. The worker therefore re-reads
+  each record before validating and skips it (leaving it `PENDING`) when
+  the document or status changed since the poll — the next tick picks up
+  the new state. A residual window between that re-read and the write
+  remains and is accepted for v0; concurrent workers picking up the same
+  record are idempotent (same validation, same promotion).
+- **Poison records** — a record that fails on every tick — currently
+  occupies part of the batch window indefinitely (there is no retry cap,
+  backoff, or ordering on the status search yet). Fine for a v0 with small
+  PENDING volumes; retry caps/backoff are a follow-up once the poll
+  competes with real traffic.
 - A **re-validation endpoint** (validate the stored `rawJsonLd` against
   a newer spec version) is a straightforward extension once the spec
   grows versions; the byte-identical storage makes it possible at all.

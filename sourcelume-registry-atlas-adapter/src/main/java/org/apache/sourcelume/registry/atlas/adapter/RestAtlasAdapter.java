@@ -194,7 +194,9 @@ public class RestAtlasAdapter implements AtlasAdapter {
             JsonNode root = objectMapper.readTree(resp.body());
             String guid = extractGuid(root);
             log.info("Created/updated dataset entity '{}' with GUID: {}", dataset.getQualifiedName(), guid);
-            dataset.setGuid(guid);
+            // The caller's DTO is deliberately not mutated with the guid:
+            // upserts take DTOs that may be shared snapshots; the guid is
+            // returned instead, and reads resolve it via the qualified name.
             return guid;
         } catch (IOException e) {
             throw new AtlasAdapterException("I/O error persisting entity: " + e.getMessage(), 500, e);

@@ -59,6 +59,7 @@ class IngestServiceImplTest {
     @Test
     void conformingRecordIsPromotedToActiveWithMappedAttributes() {
         SourcelumeDatasetDto pending = pending("https://sourcelume.apache.org/records/minimal-example", validRecord);
+        adapter.given(pending);
 
         IngestResult result = service.process(pending);
 
@@ -72,13 +73,17 @@ class IngestServiceImplTest {
         assertEquals("https://www.apache.org/licenses/LICENSE-2.0", upserted.getLicenseId());
         assertEquals("https://example.org/datasets/minimal-example", upserted.getSourceUri());
         assertEquals(validRecord, upserted.getRawJsonLd(), "raw document must stay byte-identical");
-        assertNull(upserted.getValidationIssues());
+        assertEquals(
+                SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES,
+                upserted.getValidationIssues(),
+                "an ACTIVE promotion must explicitly clear a previous INCOMPLETE verdict");
     }
 
     @Test
     void nonConformingRecordBecomesIncompleteWithStoredIssues() throws Exception {
         SourcelumeDatasetDto pending =
                 pending("https://sourcelume.apache.org/records/invalid-missing-license", invalidRecord);
+        adapter.given(pending);
 
         IngestResult result = service.process(pending);
 
@@ -103,10 +108,47 @@ class IngestServiceImplTest {
     void guidTravelsWithThePromotion() {
         SourcelumeDatasetDto pending = pending("https://sourcelume.apache.org/records/minimal-example", validRecord);
         pending.setGuid("existing-guid");
+        adapter.given(pending);
 
         service.process(pending);
 
         assertEquals("existing-guid", adapter.upserted.getGuid());
+    }
+
+    @Test
+    void aRecordCorrectedAfterThePollIsSkippedNotOverwritten() {
+        // The poll saw the old document; the store now holds the corrected
+        // resubmission. The worker must not stamp a verdict from the stale
+        // snapshot over the fresh one.
+        SourcelumeDatasetDto polled = pending("https://sourcelume.apache.org/records/minimal-example", "stale");
+        SourcelumeDatasetDto corrected = pending("https://sourcelume.apache.org/records/minimal-example", validRecord);
+        adapter.given(corrected);
+
+        IngestResult result = service.process(polled);
+
+        assertEquals(RecordStatus.PENDING, result.status(), "the record keeps its PENDING state");
+        assertNull(result.validation(), "no verdict is derived from a stale snapshot");
+        assertNull(adapter.upserted, "nothing is written for a skipped record");
+        assertEquals(
+                validRecord,
+                adapter.store
+                        .get("https://sourcelume.apache.org/records/minimal-example")
+                        .getRawJsonLd(),
+                "the corrected submission stays untouched");
+    }
+
+    @Test
+    void aRecordThatLeftPendingIsSkipped() {
+        SourcelumeDatasetDto polled = pending("https://sourcelume.apache.org/records/minimal-example", validRecord);
+        SourcelumeDatasetDto active = pending("https://sourcelume.apache.org/records/minimal-example", validRecord);
+        active.setRecordStatus(RecordStatus.ACTIVE);
+        adapter.given(active);
+
+        IngestResult result = service.process(polled);
+
+        assertEquals(RecordStatus.PENDING, result.status());
+        assertNull(result.validation());
+        assertNull(adapter.upserted);
     }
 
     private static SourcelumeDatasetDto pending(String qualifiedName, String rawJsonLd) {
@@ -125,10 +167,19 @@ class IngestServiceImplTest {
         }
     }
 
-    /** In-memory stand-in for the Atlas backend: keeps the last upsert. */
+    /**
+     * In-memory stand-in for the Atlas backend: a qualified-name-keyed
+     * store (so the service's re-read guard sees real current state) plus
+     * a capture of the last upsert.
+     */
     static class RecordingAtlasAdapter implements AtlasAdapter {
 
+        final java.util.Map<String, SourcelumeDatasetDto> store = new java.util.HashMap<>();
         SourcelumeDatasetDto upserted;
+
+        void given(SourcelumeDatasetDto dto) {
+            store.put(dto.getQualifiedName(), dto);
+        }
 
         @Override
         public boolean isServerReady() {
@@ -148,17 +199,21 @@ class IngestServiceImplTest {
         @Override
         public String createOrUpdateDatasetEntity(SourcelumeDatasetDto dataset) {
             this.upserted = dataset;
-            return "guid-1";
+            store.put(dataset.getQualifiedName(), dataset);
+            return dataset.getGuid() != null ? dataset.getGuid() : "guid-1";
         }
 
         @Override
         public SourcelumeDatasetDto getDatasetByQualifiedName(String qualifiedName) {
-            return null;
+            return store.get(qualifiedName);
         }
 
         @Override
         public List<SourcelumeDatasetDto> findDatasetsByStatus(RecordStatus status, int limit) {
-            return upserted != null && status == upserted.getRecordStatus() ? List.of(upserted) : List.of();
+            return store.values().stream()
+                    .filter(dto -> status == dto.getRecordStatus())
+                    .limit(limit)
+                    .toList();
         }
     }
 }
