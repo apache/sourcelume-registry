@@ -78,6 +78,11 @@
         <slf4j.version>2.0.16</slf4j.version>
         <junit.version>5.11.4</junit.version>
         <sourcelume-spec.version>0.0.1-SNAPSHOT</sourcelume-spec.version>
+
+        <!-- Plugin versions (formatting and style, same tools as sourcelume-spec) -->
+        <spotless-maven-plugin.version>2.44.5</spotless-maven-plugin.version>
+        <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
+        <checkstyle.version>10.26.1</checkstyle.version>
     </properties>
 
     <dependencyManagement>
@@ -171,6 +176,54 @@
                         <phase>validate</phase>
                     </execution>
                 </executions>
+            </plugin>
+
+            <!--
+                Spotless owns formatting: palantir-java-format for Java,
+                license headers from dev/license-header.txt, and sortPom for
+                the poms. Checkstyle adds structural rules Spotless cannot
+                express (dev/checkstyle.xml: JUnit 3/4 imports are banned).
+                Both mirror sourcelume-spec so both repos share one style.
+                The check goals are bound in a follow-up commit once the
+                one-off reformat has landed; `mvn spotless:apply` fixes drift.
+            -->
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>${spotless-maven-plugin.version}</version>
+                <configuration>
+                    <java>
+                        <palantirJavaFormat/>
+                        <importOrder/>
+                        <removeUnusedImports/>
+                        <licenseHeader>
+                            <file>${maven.multiModuleProjectDirectory}/dev/license-header.txt</file>
+                        </licenseHeader>
+                    </java>
+                    <pom>
+                        <sortPom>
+                            <expandEmptyElements>false</expandEmptyElements>
+                        </sortPom>
+                    </pom>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>${maven-checkstyle-plugin.version}</version>
+                <configuration>
+                    <configLocation>${maven.multiModuleProjectDirectory}/dev/checkstyle.xml</configLocation>
+                    <includeTestSourceDirectory>true</includeTestSourceDirectory>
+                    <consoleOutput>true</consoleOutput>
+                    <failOnViolation>true</failOnViolation>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.puppycrawl.tools</groupId>
+                        <artifactId>checkstyle</artifactId>
+                        <version>${checkstyle.version}</version>
+                    </dependency>
+                </dependencies>
             </plugin>
         </plugins>
     </build>
