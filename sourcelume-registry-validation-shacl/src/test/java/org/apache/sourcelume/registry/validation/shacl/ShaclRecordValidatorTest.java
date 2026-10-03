@@ -97,6 +97,14 @@ class ShaclRecordValidatorTest {
         assertTrue(result.issues().stream().anyMatch(i -> i.message().contains("@import")));
     }
 
+    /** Retrieval trigger: term-scoped remote context reference, array form (C1 regression). */
+    @Test
+    void termScopedContextArrayReferenceIsRefused() {
+        ValidationResult result = validator.validate(record("scoped-context-array-ref.jsonld"));
+        assertFalse(result.conforms());
+        assertTrue(result.issues().stream().anyMatch(i -> i.message().contains("term-scoped")));
+    }
+
     /** Retrieval trigger: term-scoped remote context reference. */
     @Test
     void termScopedContextReferenceIsRefused() {

@@ -82,7 +82,11 @@ if (!result.conforms()) {
 The "no ingest without validation" policy itself belongs to the future
 `IngestService` in the core, which will enforce the chain on the way to
 persistence (throwing `SourcelumeValidationException`, see the core
-`ValidationService` for that contract).
+`ValidationService` for that contract). `ValidationService` deliberately
+surfaces only `VIOLATION` severities in the exception; until plugins produce
+meaningful warnings, keeping the exception contract small wins — revisit
+before `IngestService` cements it (e.g. by carrying the structured issues
+or logging warnings).
 
 ### Runtime wiring and the validation endpoint
 
@@ -91,7 +95,10 @@ once at startup (`ValidatorChainProducer`): `ValidatorChain.discover()`
 throws when no plugins are found, so a mispackaged registry **fails to
 boot** instead of silently accepting unvalidated records. There is no
 switch to disable validation — a registry that skips it contradicts its
-purpose.
+purpose. Because CDI producers of `@ApplicationScoped` scope are created
+lazily on first access, the producer observes the Quarkus `StartupEvent`
+and touches the (proxied) chain there — discovery and shape/schema
+parsing happen exactly once, during boot, guaranteed.
 
 That wiring backs a pre-flight endpoint, `POST /records/validate`:
 
@@ -146,11 +153,15 @@ bundled context resource path with the context shipped in the `sourcelume-spec`
 artifact and **refuses documents with any other string reference**. Inline
 context objects are passed through, but scanned recursively for every
 construct that would make the RDF parser retrieve a remote document —
-`@import` and term-scoped context references are refused, so the offline
+`@import` and term-scoped context references (in string *and* array form,
+and at any depth inside term definitions) are refused, so the offline
 guarantee is structural (a JSON-LD processor only ever retrieves documents
-for exactly those constructs). The number of replacements is capped: a
-document made of repeated context references cannot amplify into the
-serialized form and exhaust heap. Documents without any `@context` at all,
+for exactly those constructs). Both amplification channels are capped: the
+number of replacements (a document made of repeated context references
+cannot amplify into the serialized form) and the number of reported
+refusals (a document made of many distinct unknown references cannot
+amplify into the issue list and the HTTP response). Documents without any
+`@context` at all,
 or with a `@context` that is neither a string, an array, nor an object, are
 refused as well: their terms would not expand, the graph would be empty of
 sourcelume types, and an empty graph trivially *conforms* to the shapes —
