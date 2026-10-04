@@ -38,6 +38,9 @@ SETUP.md).
 mvn clean install
 ```
 
+On Windows, see the "Running on Windows" section of
+`dev-support/README.md` for WSL2/Git Bash/PowerShell guidance.
+
 ## Running the Quarkus runtime
 
 Against a local Atlas (default `http://localhost:21000`, see
