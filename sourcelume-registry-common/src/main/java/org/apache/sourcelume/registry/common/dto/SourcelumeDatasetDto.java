@@ -26,8 +26,8 @@ import java.util.Objects;
  *
  * <p>Besides the provenance attributes, the DTO carries the ingest lifecycle
  * fields ({@link #getRecordStatus() recordStatus}, rawJsonLd, validationIssues)
- * written by the ingest pipeline: the API stores the raw record with status
- * PENDING, the worker promotes it to ACTIVE or INCOMPLETE.
+ * written by the ingest pipeline: the API validates a submission synchronously
+ * and stores the record with its verdict — VALIDATED or INCOMPLETE.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -48,12 +48,12 @@ public class SourcelumeDatasetDto {
     private String qualifiedName;
 
     /**
-     * Optional in the domain: a PENDING record has not been validated yet,
-     * so the ingest API writes a placeholder derived from the record id,
-     * and the promotion overwrites it with the mapped name. (Atlas' Asset
-     * supertype requires a name on every entity; the mapped, validated
-     * view of a record is {@link ProvenanceRecordDto}, whose constraints
-     * are enforced by the JSON Schema stage.)
+     * Optional in the domain: an INCOMPLETE record may lack the mapped
+     * fields, so the ingest API writes a placeholder derived from the
+     * record id, and a validating verdict overwrites it with the mapped
+     * name. (Atlas' Asset supertype requires a name on every entity; the
+     * mapped view of a record is {@link ProvenanceRecordDto}, whose
+     * constraints are enforced by the JSON Schema stage.)
      */
     private String name;
 

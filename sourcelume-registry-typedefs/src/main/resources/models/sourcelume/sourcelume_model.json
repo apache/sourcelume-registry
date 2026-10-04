@@ -3,19 +3,15 @@
     {
       "name": "sourcelume_record_status",
       "typeVersion": "1.0",
-      "description": "Curation state of a Sourcelume record: PENDING (submitted, awaiting validation), INCOMPLETE (validation failed, curatable), ACTIVE (validated and published). This is a Sourcelume domain state, independent of the backend's existence lifecycle (Atlas ACTIVE/DELETED/PURGED). qualifiedName is inherited from Referenceable via DataSet and intentionally not redeclared.",
+      "description": "Validation verdict of a Sourcelume record: INCOMPLETE (validation failed, curatable), VALIDATED (validated and published). This is a Sourcelume domain state, independent of the backend's existence lifecycle (Atlas ACTIVE/DELETED/PURGED). qualifiedName is inherited from Referenceable via DataSet and intentionally not redeclared.",
       "elementDefs": [
         {
           "ordinal": 0,
-          "value": "PENDING"
-        },
-        {
-          "ordinal": 1,
           "value": "INCOMPLETE"
         },
         {
-          "ordinal": 2,
-          "value": "ACTIVE"
+          "ordinal": 1,
+          "value": "VALIDATED"
         }
       ]
     }

@@ -60,7 +60,7 @@ public final class ProvenanceRecordMapper {
     /**
      * Extracts the record IRI ({@code id}) from a raw document without
      * requiring any other field to be present. The ingest API uses this to
-     * key the PENDING entity before validation runs — a document without an
+     * key the submission before validation runs — a document without an
      * {@code id} cannot be stored and is rejected up front.
      *
      * @param rawJsonLd the raw JSON-LD document

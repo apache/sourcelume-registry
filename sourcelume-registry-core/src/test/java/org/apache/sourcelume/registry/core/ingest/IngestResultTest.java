@@ -45,8 +45,8 @@ class IngestResultTest {
 
     @Test
     void isValueEqual() {
-        IngestResult a = new IngestResult("q", RecordStatus.ACTIVE, ValidationResult.OK);
-        IngestResult b = new IngestResult("q", RecordStatus.ACTIVE, ValidationResult.OK);
+        IngestResult a = new IngestResult("q", RecordStatus.VALIDATED, ValidationResult.OK);
+        IngestResult b = new IngestResult("q", RecordStatus.VALIDATED, ValidationResult.OK);
 
         assertEquals(a, b);
         assertEquals(a.hashCode(), b.hashCode());

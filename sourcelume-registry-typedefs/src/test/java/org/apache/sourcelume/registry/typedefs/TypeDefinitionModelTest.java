@@ -61,7 +61,7 @@ class TypeDefinitionModelTest {
             assertEquals(expectedOrdinal++, element.path("ordinal").asInt());
             values.add(element.path("value").asText());
         }
-        assertEquals(List.of("PENDING", "INCOMPLETE", "ACTIVE"), values);
+        assertEquals(List.of("INCOMPLETE", "VALIDATED"), values);
     }
 
     @Test

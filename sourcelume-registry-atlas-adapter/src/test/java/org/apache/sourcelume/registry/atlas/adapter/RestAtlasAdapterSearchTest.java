@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,30 +14,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.sourcelume.registry.atlas.adapter;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+package org.apache.sourcelume.registry.atlas.adapter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import org.apache.sourcelume.registry.common.dto.RecordStatus;
+import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
+import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
+import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
-import org.apache.sourcelume.registry.common.dto.RecordStatus;
-import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
-import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * HTTP-level tests for the status search and the lifecycle attribute
@@ -66,17 +68,15 @@ class RestAtlasAdapterSearchTest {
 
     @Test
     void searchesByStatusAndMapsEntities() throws IOException {
-        serve(
-                200,
-                "{\"entities\": ["
-                        + entity("guid-1", "PENDING", "https://example.org/records/one")
-                        + ", " + entity("guid-2", "PENDING", "https://example.org/records/two") + "]}");
+        serve(200, "{\"entities\": ["
+                + entity("guid-1", "VALIDATED", "https://example.org/records/one")
+                + ", " + entity("guid-2", "VALIDATED", "https://example.org/records/two") + "]}");
 
-        List<SourcelumeDatasetDto> found = adapter.findDatasetsByStatus(RecordStatus.PENDING, 10);
+        List<SourcelumeDatasetDto> found = adapter.findDatasetsByStatus(RecordStatus.VALIDATED, 10);
 
         assertEquals(2, found.size());
         assertEquals("guid-1", found.get(0).getGuid());
-        assertEquals(RecordStatus.PENDING, found.get(0).getRecordStatus());
+        assertEquals(RecordStatus.VALIDATED, found.get(0).getRecordStatus());
         assertEquals("{\"id\": \"one\"}", found.get(0).getRawJsonLd());
         assertNull(found.get(0).getValidationIssues());
 
@@ -84,10 +84,8 @@ class RestAtlasAdapterSearchTest {
         assertEquals("sourcelume_dataset", body.path("typeName").asText());
         assertTrue(body.path("excludeDeletedEntities").asBoolean());
         assertEquals(10, body.path("limit").asInt());
-        assertEquals(
-                "recordStatus", body.path("entityFilters").path("attributeName").asText());
-        assertEquals(
-                "PENDING", body.path("entityFilters").path("attributeValue").asText());
+        assertEquals("recordStatus", body.path("entityFilters").path("attributeName").asText());
+        assertEquals("VALIDATED", body.path("entityFilters").path("attributeValue").asText());
         // Without the explicit attributes list Atlas returns headers only
         // and callers would see empty documents.
         JsonNode attributes = body.path("attributes");
@@ -105,7 +103,7 @@ class RestAtlasAdapterSearchTest {
     void emptySearchResultYieldsAnEmptyList() throws IOException {
         serve(200, "{\"queryType\": \"BASIC\", \"searchParameters\": {}}");
 
-        List<SourcelumeDatasetDto> found = adapter.findDatasetsByStatus(RecordStatus.PENDING, 10);
+        List<SourcelumeDatasetDto> found = adapter.findDatasetsByStatus(RecordStatus.VALIDATED, 10);
 
         assertNotNull(found);
         assertTrue(found.isEmpty());
@@ -115,17 +113,18 @@ class RestAtlasAdapterSearchTest {
     void backendErrorFailsLoudly() throws IOException {
         serve(500, "{\"errorMessage\": \"boom\"}");
 
-        assertThrows(AtlasAdapterException.class, () -> adapter.findDatasetsByStatus(RecordStatus.PENDING, 10));
+        assertThrows(AtlasAdapterException.class,
+                () -> adapter.findDatasetsByStatus(RecordStatus.VALIDATED, 10));
     }
 
     @Test
     void lookupMapsTheLifecycleFields() throws IOException {
         // The unique-attribute endpoint answers with AtlasEntityWithExtInfo.
-        serve(200, "{\"entity\": " + entity("guid-9", "ACTIVE", "https://example.org/records/nine") + "}");
+        serve(200, "{\"entity\": " + entity("guid-9", "VALIDATED", "https://example.org/records/nine") + "}");
 
         SourcelumeDatasetDto dto = adapter.getDatasetByQualifiedName("https://example.org/records/nine");
 
-        assertEquals(RecordStatus.ACTIVE, dto.getRecordStatus());
+        assertEquals(RecordStatus.VALIDATED, dto.getRecordStatus());
         assertEquals("guid-9", dto.getGuid());
         assertEquals("https://example.org/records/nine", dto.getQualifiedName());
         assertEquals("nine", dto.getName());
@@ -136,8 +135,8 @@ class RestAtlasAdapterSearchTest {
     void unknownStatusValueFailsLoudly() throws IOException {
         serve(200, "{\"entity\": " + entity("guid-x", "SOMEDAY", "https://example.org/records/x") + "}");
 
-        AtlasAdapterException exception = assertThrows(
-                AtlasAdapterException.class, () -> adapter.getDatasetByQualifiedName("https://example.org/records/x"));
+        AtlasAdapterException exception = assertThrows(AtlasAdapterException.class,
+                () -> adapter.getDatasetByQualifiedName("https://example.org/records/x"));
         assertTrue(exception.getMessage().contains("SOMEDAY"));
     }
 
@@ -148,25 +147,19 @@ class RestAtlasAdapterSearchTest {
         SourcelumeDatasetDto dto = new SourcelumeDatasetDto();
         dto.setQualifiedName("https://example.org/records/one");
         dto.setName("one");
-        dto.setRecordStatus(RecordStatus.PENDING);
+        dto.setRecordStatus(RecordStatus.VALIDATED);
         dto.setRawJsonLd("{\"id\": \"https://example.org/records/one\"}");
         dto.setValidationIssues("[{\"message\": \"m\"}]");
 
         String guid = adapter.createOrUpdateDatasetEntity(dto);
 
         assertEquals("guid-1", guid);
-        JsonNode attributes = objectMapper
-                .readTree(lastRequestBody.get())
-                .path("entities")
-                .get(0)
-                .path("attributes");
-        assertEquals("PENDING", attributes.path("recordStatus").asText());
-        assertEquals(
-                "{\"id\": \"https://example.org/records/one\"}",
-                attributes.path("rawJsonLd").asText());
+        JsonNode attributes = objectMapper.readTree(lastRequestBody.get())
+                .path("entities").get(0).path("attributes");
+        assertEquals("VALIDATED", attributes.path("recordStatus").asText());
+        assertEquals("{\"id\": \"https://example.org/records/one\"}", attributes.path("rawJsonLd").asText());
         // The issues attribute must reach the wire with its exact value (see CLEARED_VALIDATION_ISSUES).
-        assertEquals(
-                "[{\"message\": \"m\"}]", attributes.path("validationIssues").asText());
+        assertEquals("[{\"message\": \"m\"}]", attributes.path("validationIssues").asText());
     }
 
     // --- stub helpers ---
@@ -189,8 +182,7 @@ class RestAtlasAdapterSearchTest {
         return "{\"guid\": \"" + guid + "\", \"attributes\": {"
                 + "\"qualifiedName\": \"" + qualifiedName + "\","
                 + "\"name\": \"" + qualifiedName.substring(qualifiedName.lastIndexOf('/') + 1) + "\","
-                + "\"licenseId\": \"https://example.org/licenses/"
-                + qualifiedName.substring(qualifiedName.lastIndexOf('/') + 1) + "\","
+                + "\"licenseId\": \"https://example.org/licenses/" + qualifiedName.substring(qualifiedName.lastIndexOf('/') + 1) + "\","
                 + "\"recordStatus\": \"" + recordStatus + "\","
                 + "\"rawJsonLd\": \"{\\\"id\\\": \\\"one\\\"}\""
                 + "}}";

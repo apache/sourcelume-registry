@@ -27,9 +27,5 @@ import org.apache.sourcelume.registry.core.validation.ValidationResult;
  * <p>The result carries the issues as data instead of throwing — an
  * INCOMPLETE record is a normal, expected outcome of curation, not an
  * exceptional one.
- *
- * <p>A {@code null} validation means the pipeline skipped the record
- * without a verdict — e.g. the record changed after the poll — in which
- * case the status is the unchanged PENDING.
  */
 public record IngestResult(String qualifiedName, RecordStatus status, ValidationResult validation) {}

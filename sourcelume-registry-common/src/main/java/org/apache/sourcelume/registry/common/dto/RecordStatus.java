@@ -23,23 +23,21 @@ package org.apache.sourcelume.registry.common.dto;
  * <p>This is a Sourcelume domain state, deliberately independent of the
  * persistence backend's own lifecycle: Atlas distinguishes whether an
  * entity <em>exists</em> (ACTIVE/DELETED/PURGED), while this status
- * describes how far the record's curation has progressed. Keeping the
- * two apart lets the vendor-neutral {@code AtlasAdapter} SPI expose the
- * same state machine on any backend.
+ * describes the record's validation verdict. Keeping the two apart lets
+ * the vendor-neutral {@code AtlasAdapter} SPI expose the same state
+ * machine on any backend.
  *
- * <p>Only {@link #ACTIVE} records are considered published; consumers
- * should filter on it. The guarantee the registry gives is "no record
- * is ACTIVE without validation" — INCOMPLETE records stay queryable
- * for their owner, so curation can continue over several rounds.
+ * <p>Validation is synchronous: every stored record carries its verdict,
+ * and no verdict-less state exists. Only {@link #VALIDATED} records are
+ * considered published; consumers should filter on it. An
+ * {@link #INCOMPLETE} record carries its validation issues and stays
+ * curatable, so curation can continue over several rounds.
  */
 public enum RecordStatus {
 
-    /** Submitted and stored, awaiting validation by the ingest worker. */
-    PENDING,
-
-    /** Validation failed; the record carries its issues and stays curatable. A corrected resubmission returns it to PENDING. */
+    /** Validation failed; the record carries its issues and stays curatable. A corrected resubmission gets a new verdict. */
     INCOMPLETE,
 
     /** Validated against the spec and published. */
-    ACTIVE
+    VALIDATED
 }

@@ -19,27 +19,28 @@ package org.apache.sourcelume.registry.core.ingest;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 
 /**
- * SPI for the ingest pipeline step that turns a stored PENDING record
- * into a verdict: validate the record's raw JSON-LD, map a conforming
- * record onto its entity attributes, and promote the entity to
- * {@link org.apache.sourcelume.registry.common.dto.RecordStatus#ACTIVE}
+ * SPI for the ingest pipeline step that turns a submitted record into
+ * a verdict: validate the record's raw JSON-LD, map a conforming record
+ * onto its entity attributes, and store the entity with its verdict —
+ * {@link org.apache.sourcelume.registry.common.dto.RecordStatus#VALIDATED}
  * or {@link org.apache.sourcelume.registry.common.dto.RecordStatus#INCOMPLETE}.
  *
- * <p>The registry's REST API only ever writes PENDING entities; running
- * this step is the ingest worker's job. Keeping the step behind an SPI
- * lets other frontends (a CLI, for example) run the same pipeline
- * without going through the worker process.
+ * <p>The REST API calls this step synchronously on submission, so no
+ * record reaches the store without a verdict. Keeping the step behind
+ * an SPI lets other frontends (a CLI, or a queue consumer the day a
+ * slow validation step makes a real queue worth its price) run the
+ * same pipeline.
  */
 public interface IngestService {
 
     /**
-     * Processes one stored PENDING dataset: validates its rawJsonLd,
-     * and promotes it to ACTIVE (mapped attributes) or INCOMPLETE
-     * (validation issues on the entity). The stored raw document is
-     * never modified.
+     * Processes one submitted dataset: validates its rawJsonLd and stores
+     * the entity with its verdict — VALIDATED (mapped attributes) or
+     * INCOMPLETE (validation issues on the entity). The raw document is
+     * stored byte-identical.
      *
-     * @param pendingDataset the stored dataset, never null
+     * @param submitted the submitted dataset, never null
      * @return the outcome of the run, never null
      */
-    IngestResult process(SourcelumeDatasetDto pendingDataset);
+    IngestResult process(SourcelumeDatasetDto submitted);
 }

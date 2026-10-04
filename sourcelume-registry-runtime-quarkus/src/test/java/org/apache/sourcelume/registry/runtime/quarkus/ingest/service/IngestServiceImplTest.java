@@ -59,17 +59,17 @@ class IngestServiceImplTest {
     }
 
     @Test
-    void conformingRecordIsPromotedToActiveWithMappedAttributes() {
+    void conformingRecordAnswersValidatedWithMappedAttributes() {
         SourcelumeDatasetDto submitted = submitted("https://sourcelume.apache.org/records/minimal-example", validRecord);
 
         IngestResult result = service.process(submitted);
 
-        assertEquals(RecordStatus.ACTIVE, result.status());
+        assertEquals(RecordStatus.VALIDATED, result.status());
         assertEquals("https://sourcelume.apache.org/records/minimal-example", result.qualifiedName());
         assertTrue(result.validation().conforms());
 
         SourcelumeDatasetDto upserted = adapter.upserted;
-        assertEquals(RecordStatus.ACTIVE, upserted.getRecordStatus());
+        assertEquals(RecordStatus.VALIDATED, upserted.getRecordStatus());
         assertEquals("Minimal example record", upserted.getName());
         assertEquals("https://www.apache.org/licenses/LICENSE-2.0", upserted.getLicenseId());
         assertEquals("https://example.org/datasets/minimal-example", upserted.getSourceUri());
@@ -117,8 +117,8 @@ class IngestServiceImplTest {
     private static SourcelumeDatasetDto submitted(String qualifiedName, String rawJsonLd) {
         SourcelumeDatasetDto dto = new SourcelumeDatasetDto();
         dto.setQualifiedName(qualifiedName);
-        dto.setRecordStatus(RecordStatus.PENDING);
         dto.setRawJsonLd(rawJsonLd);
+        // no status: the pipeline assigns the verdict — submissions carry none.
         return dto;
     }
 

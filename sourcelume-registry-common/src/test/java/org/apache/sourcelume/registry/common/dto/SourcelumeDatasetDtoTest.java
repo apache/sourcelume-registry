@@ -40,13 +40,13 @@ class SourcelumeDatasetDtoTest {
         SourcelumeDatasetDto dto = new SourcelumeDatasetDto();
         dto.setQualifiedName("https://example.org/records/one");
         dto.setName("one");
-        dto.setRecordStatus(RecordStatus.PENDING);
+        dto.setRecordStatus(RecordStatus.VALIDATED);
         dto.setRawJsonLd("{\"id\": \"https://example.org/records/one\"}");
         dto.setValidationIssues("[{\"message\": \"missing license\"}]");
 
         String json = objectMapper.writeValueAsString(dto);
 
-        assertTrue(json.contains("\"recordStatus\":\"PENDING\""));
+        assertTrue(json.contains("\"recordStatus\":\"VALIDATED\""));
         assertTrue(json.contains("\"rawJsonLd\":"));
         assertTrue(json.contains("\"validationIssues\":"));
     }
