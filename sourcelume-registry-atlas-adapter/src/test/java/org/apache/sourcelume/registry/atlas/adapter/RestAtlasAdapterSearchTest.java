@@ -88,6 +88,17 @@ class RestAtlasAdapterSearchTest {
                 "recordStatus", body.path("entityFilters").path("attributeName").asText());
         assertEquals(
                 "PENDING", body.path("entityFilters").path("attributeValue").asText());
+        // Without the explicit attributes list Atlas returns headers only
+        // and the worker would see empty documents.
+        JsonNode attributes = body.path("attributes");
+        assertTrue(attributes.isArray() && attributes.size() == 8, "the lifecycle attributes must be requested");
+        for (String wanted : new String[] {"rawJsonLd", "recordStatus"}) {
+            boolean listed = false;
+            for (JsonNode attribute : attributes) {
+                listed = listed || wanted.equals(attribute.asText());
+            }
+            assertTrue(listed, wanted + " must be requested from basic search");
+        }
     }
 
     @Test
@@ -109,7 +120,8 @@ class RestAtlasAdapterSearchTest {
 
     @Test
     void lookupMapsTheLifecycleFields() throws IOException {
-        serve(200, "{\"entities\": [" + entity("guid-9", "ACTIVE", "https://example.org/records/nine") + "]}");
+        // The unique-attribute endpoint answers with AtlasEntityWithExtInfo.
+        serve(200, "{\"entity\": " + entity("guid-9", "ACTIVE", "https://example.org/records/nine") + "}");
 
         SourcelumeDatasetDto dto = adapter.getDatasetByQualifiedName("https://example.org/records/nine");
 
@@ -122,7 +134,7 @@ class RestAtlasAdapterSearchTest {
 
     @Test
     void unknownStatusValueFailsLoudly() throws IOException {
-        serve(200, "{\"entities\": [" + entity("guid-x", "SOMEDAY", "https://example.org/records/x") + "]}");
+        serve(200, "{\"entity\": " + entity("guid-x", "SOMEDAY", "https://example.org/records/x") + "}");
 
         AtlasAdapterException exception = assertThrows(
                 AtlasAdapterException.class, () -> adapter.getDatasetByQualifiedName("https://example.org/records/x"));

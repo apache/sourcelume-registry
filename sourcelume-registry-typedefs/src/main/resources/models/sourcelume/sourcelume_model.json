@@ -49,7 +49,7 @@
           "typeName": "sourcelume_record_status",
           "cardinality": "SINGLE",
           "isIndexable": true,
-          "isOptional": false,
+          "isOptional": true,
           "isUnique": false
         },
         {
@@ -57,7 +57,7 @@
           "typeName": "string",
           "cardinality": "SINGLE",
           "isIndexable": false,
-          "isOptional": false,
+          "isOptional": true,
           "isUnique": false
         },
         {

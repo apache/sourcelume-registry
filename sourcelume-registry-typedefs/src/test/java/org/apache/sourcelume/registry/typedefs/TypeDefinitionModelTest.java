@@ -64,12 +64,18 @@ class TypeDefinitionModelTest {
         JsonNode attributes = datasetEntity().path("attributeDefs");
         JsonNode recordStatus = attribute(attributes, "recordStatus");
         assertEquals("sourcelume_record_status", recordStatus.path("typeName").asText());
-        assertFalse(recordStatus.path("isOptional").asBoolean(), "a record always has a status");
+        // Optional on purpose: the ingest path always writes a status, but
+        // Atlas refuses to add a mandatory attribute to an existing type
+        // (CANNOT_ADD_MANDATORY_ATTRIBUTE), so the bootstrap must be able
+        // to extend a pre-existing sourcelume_dataset.
+        assertTrue(
+                recordStatus.path("isOptional").asBoolean(),
+                "mandatory attributes cannot be added to an existing type in Atlas");
         assertTrue(recordStatus.path("isIndexable").asBoolean(), "the worker polls by status");
 
         JsonNode rawJsonLd = attribute(attributes, "rawJsonLd");
         assertEquals("string", rawJsonLd.path("typeName").asText());
-        assertFalse(rawJsonLd.path("isOptional").asBoolean(), "a stored record always has its raw JSON-LD");
+        assertTrue(rawJsonLd.path("isOptional").asBoolean(), "same schema-evolution constraint as recordStatus");
         assertFalse(rawJsonLd.path("isIndexable").asBoolean());
 
         JsonNode validationIssues = attribute(attributes, "validationIssues");

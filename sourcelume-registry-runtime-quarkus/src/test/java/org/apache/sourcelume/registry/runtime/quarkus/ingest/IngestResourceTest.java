@@ -86,6 +86,10 @@ class IngestResourceTest {
         assertEquals(RecordStatus.PENDING, stored.getRecordStatus());
         assertEquals(VALID_RECORD, stored.getRawJsonLd(), "the stored record must be byte-identical");
         assertNull(stored.getValidationIssues());
+        assertEquals(
+                "ingest-test",
+                stored.getName(),
+                "Atlas requires a name — the API writes a placeholder from the record id");
     }
 
     @Test

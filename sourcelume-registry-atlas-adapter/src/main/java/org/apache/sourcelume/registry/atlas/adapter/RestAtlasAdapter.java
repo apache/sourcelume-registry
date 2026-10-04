@@ -166,9 +166,10 @@ public class RestAtlasAdapter implements AtlasAdapter {
         entity.put("typeName", SourcelumeDatasetDto.TYPE_NAME);
         ObjectNode attributes = entity.putObject("attributes");
         attributes.put("qualifiedName", dataset.getQualifiedName());
-        // name may be absent on a PENDING write: the record has not been
-        // validated yet, so it may lack fields — only the promotion writes
-        // the mapped attributes.
+        // Atlas' Asset supertype requires a name on every entity, so the
+        // ingest path always provides one (a placeholder derived from the
+        // record id until validation writes the mapped name); the DTO keeps
+        // name optional for callers that are not the ingest path.
         if (dataset.getName() != null) attributes.put("name", dataset.getName());
         if (dataset.getDescription() != null) attributes.put("description", dataset.getDescription());
         if (dataset.getSourceUri() != null) attributes.put("sourceUri", dataset.getSourceUri());
@@ -210,8 +211,11 @@ public class RestAtlasAdapter implements AtlasAdapter {
     public SourcelumeDatasetDto getDatasetByQualifiedName(String qualifiedName) {
         try {
             String q = URLEncoder.encode(qualifiedName, StandardCharsets.UTF_8);
-            String path =
-                    "/api/atlas/v2/entity/bulk?typeName=" + SourcelumeDatasetDto.TYPE_NAME + "&attr:qualifiedName=" + q;
+            // /entity/bulk only resolves guids; the qualified name lookup
+            // goes through the unique-attribute endpoint, which answers with
+            // an AtlasEntityWithExtInfo ({"entity": {...}}) or 404.
+            String path = "/api/atlas/v2/entity/uniqueAttribute/type/" + SourcelumeDatasetDto.TYPE_NAME
+                    + "?attr:qualifiedName=" + q;
             HttpRequest req = baseRequest("GET", path).GET().build();
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() == 404) {
@@ -222,11 +226,10 @@ public class RestAtlasAdapter implements AtlasAdapter {
                         "Failed to fetch dataset entity from Atlas: " + resp.body(), resp.statusCode(), null);
             }
             JsonNode root = objectMapper.readTree(resp.body());
-            JsonNode entities = root.path("entities");
-            if (!entities.isArray() || entities.isEmpty()) {
+            JsonNode entity = root.path("entity");
+            if (entity.isMissingNode() || entity.isNull()) {
                 return null;
             }
-            JsonNode entity = entities.get(0);
             return toDatasetDto(entity);
         } catch (IOException e) {
             throw new AtlasAdapterException("I/O error fetching entity: " + e.getMessage(), 500, e);
@@ -248,6 +251,22 @@ public class RestAtlasAdapter implements AtlasAdapter {
         body.put("typeName", SourcelumeDatasetDto.TYPE_NAME);
         body.put("excludeDeletedEntities", true);
         body.put("limit", limit);
+        // Basic search returns entity headers only unless the attributes to
+        // load are listed explicitly — without this, rawJsonLd and
+        // recordStatus come back null and no record ever gets promoted.
+        ArrayNode attributes = body.putArray("attributes");
+        for (String attribute : new String[] {
+            "qualifiedName",
+            "name",
+            "description",
+            "sourceUri",
+            "licenseId",
+            "recordStatus",
+            "rawJsonLd",
+            "validationIssues"
+        }) {
+            attributes.add(attribute);
+        }
         ObjectNode filters = body.putObject("entityFilters");
         filters.put("attributeName", "recordStatus");
         filters.put("operator", "=");

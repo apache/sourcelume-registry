@@ -83,6 +83,7 @@ public class IngestResource {
         pending.setQualifiedName(recordId);
         pending.setRecordStatus(RecordStatus.PENDING);
         pending.setRawJsonLd(rawJsonLd);
+        pending.setName(placeholderName(recordId));
         if (existing != null) {
             // Explicit clear — see CLEARED_VALIDATION_ISSUES.
             pending.setValidationIssues(SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES);
@@ -106,6 +107,17 @@ public class IngestResource {
                     .build();
         }
         return Response.ok(RecordResponse.of(dataset)).build();
+    }
+
+    /**
+     * Atlas' Asset supertype requires a name on every entity, so the
+     * PENDING write carries a placeholder derived from the record id;
+     * the promotion overwrites it with the mapped name.
+     */
+    private static String placeholderName(String recordId) {
+        int lastSegment = recordId.lastIndexOf('/');
+        String candidate = lastSegment >= 0 ? recordId.substring(lastSegment + 1) : recordId;
+        return candidate.isBlank() ? recordId : candidate;
     }
 
     private static URI locationOf(String recordId) {

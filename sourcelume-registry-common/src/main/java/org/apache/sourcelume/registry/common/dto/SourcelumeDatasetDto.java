@@ -48,11 +48,12 @@ public class SourcelumeDatasetDto {
     private String qualifiedName;
 
     /**
-     * Optional on purpose: a PENDING record has not been validated yet, so
-     * it may lack every mapped attribute — {@code name} is only written by
-     * the worker's ACTIVE promotion. (The mapped, validated view of a
-     * record is {@link ProvenanceRecordDto}, whose constraints are
-     * enforced by the JSON Schema stage.)
+     * Optional in the domain: a PENDING record has not been validated yet,
+     * so the ingest API writes a placeholder derived from the record id,
+     * and the promotion overwrites it with the mapped name. (Atlas' Asset
+     * supertype requires a name on every entity; the mapped, validated
+     * view of a record is {@link ProvenanceRecordDto}, whose constraints
+     * are enforced by the JSON Schema stage.)
      */
     private String name;
 
