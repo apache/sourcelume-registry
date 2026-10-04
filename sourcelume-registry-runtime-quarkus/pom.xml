@@ -40,11 +40,6 @@
         dependencies in the reactor: the Quarkus BOM is imported here, in the
         module's own dependencyManagement. The parent POM stays framework-free.</description>
 
-  <properties>
-    <!-- Only place in the reactor that knows about Quarkus. -->
-    <quarkus.version>3.33.3</quarkus.version>
-  </properties>
-
   <dependencyManagement>
     <dependencies>
       <!-- Quarkus BOM owns the Quarkus + Jakarta + Jackson versions for
@@ -68,6 +63,11 @@
     </dependency>
     <dependency>
       <groupId>org.apache.sourcelume</groupId>
+      <artifactId>sourcelume-registry-atlas-adapter</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.sourcelume</groupId>
       <artifactId>sourcelume-registry-common</artifactId>
       <version>${project.version}</version>
     </dependency>
@@ -82,8 +82,8 @@
       <artifactId>sourcelume-spec</artifactId>
     </dependency>
     <!-- Validation plugins: runtime wiring discovers them via the
-         RecordValidator SPI (ServiceLoader); a registry without them
-         would silently accept everything, so they are hard deps here. -->
+             RecordValidator SPI (ServiceLoader); a registry without them
+             would silently accept everything, so they are hard deps here. -->
     <dependency>
       <groupId>org.apache.sourcelume</groupId>
       <artifactId>sourcelume-registry-validation-jsonschema</artifactId>
@@ -126,6 +126,20 @@
       <artifactId>rest-assured</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Testcontainers for the Atlas integration tests (*IT, profile
+             integration-tests): starts the vendored Atlas compose stack.
+             The version is pinned deliberately: the Quarkus BOM does not
+             manage Testcontainers, and the compose support must not drift
+             between builds. -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers</artifactId>
+      <version>1.21.3</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- The ingest worker module carries the promotion implementation
+             (IngestService); the integration test drives it inline against
+             the same Atlas the REST resource writes to. -->
   </dependencies>
 
   <build>
@@ -156,5 +170,37 @@
       </plugin>
     </plugins>
   </build>
+
+  <!-- End-to-end pipeline tests against a real Apache Atlas backend
+         (*IT classes). Off by default: run with
+         mvn verify -Pintegration-tests
+         Prerequisites: dev-support vendor + locally built atlas image —
+         see dev-support/README.md and AtlasComposeResource. -->
+  <profiles>
+    <profile>
+      <id>integration-tests</id>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <version>3.5.6</version>
+            <configuration>
+              <systemPropertyVariables>
+                <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+              </systemPropertyVariables>
+            </configuration>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>integration-test</goal>
+                  <goal>verify</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 
 </project>

@@ -23,6 +23,11 @@ import java.util.Objects;
 
 /**
  * High-level DTO representing a sourcelume_dataset entity in Apache Atlas.
+ *
+ * <p>Besides the provenance attributes, the DTO carries the ingest lifecycle
+ * fields ({@link #getRecordStatus() recordStatus}, rawJsonLd, validationIssues)
+ * written by the ingest pipeline: the API validates a submission synchronously
+ * and stores the record with its verdict — VALIDATED or INCOMPLETE.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -30,16 +35,41 @@ public class SourcelumeDatasetDto {
 
     public static final String TYPE_NAME = "sourcelume_dataset";
 
+    /**
+     * The value that explicitly clears the {@code validationIssues}
+     * attribute. Atlas upserts merge attributes — an absent attribute keeps
+     * its previous value — so every transition away from INCOMPLETE must
+     * write this sentinel instead of leaving the attribute unset, or the
+     * record would carry its old failure report into the next state.
+     */
+    public static final String CLEARED_VALIDATION_ISSUES = "[]";
+
     @NotBlank(message = "Qualified name is required")
     private String qualifiedName;
 
-    @NotBlank(message = "Dataset name is required")
+    /**
+     * Optional in the domain: an INCOMPLETE record may lack the mapped
+     * fields, so the ingest API writes a placeholder derived from the
+     * record id, and a validating verdict overwrites it with the mapped
+     * name. (Atlas' Asset supertype requires a name on every entity; the
+     * mapped view of a record is {@link ProvenanceRecordDto}, whose
+     * constraints are enforced by the JSON Schema stage.)
+     */
     private String name;
 
     private String description;
     private String sourceUri;
     private String licenseId;
     private String guid;
+    private RecordStatus recordStatus;
+    private String rawJsonLd;
+    private String validationIssues;
+    /** Hex SHA-256 over the received request bytes — set by the REST layer. */
+    private String sha256;
+    /** The validator chain that produced the verdict (comma-separated ids). */
+    private String validatedBy;
+    /** When the verdict was produced (ISO-8601, UTC). */
+    private String validatedAt;
 
     public SourcelumeDatasetDto() {}
 
@@ -98,6 +128,54 @@ public class SourcelumeDatasetDto {
         this.guid = guid;
     }
 
+    public RecordStatus getRecordStatus() {
+        return recordStatus;
+    }
+
+    public void setRecordStatus(RecordStatus recordStatus) {
+        this.recordStatus = recordStatus;
+    }
+
+    public String getRawJsonLd() {
+        return rawJsonLd;
+    }
+
+    public void setRawJsonLd(String rawJsonLd) {
+        this.rawJsonLd = rawJsonLd;
+    }
+
+    public String getSha256() {
+        return sha256;
+    }
+
+    public void setSha256(String sha256) {
+        this.sha256 = sha256;
+    }
+
+    public String getValidatedBy() {
+        return validatedBy;
+    }
+
+    public void setValidatedBy(String validatedBy) {
+        this.validatedBy = validatedBy;
+    }
+
+    public String getValidatedAt() {
+        return validatedAt;
+    }
+
+    public void setValidatedAt(String validatedAt) {
+        this.validatedAt = validatedAt;
+    }
+
+    public String getValidationIssues() {
+        return validationIssues;
+    }
+
+    public void setValidationIssues(String validationIssues) {
+        this.validationIssues = validationIssues;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -118,6 +196,7 @@ public class SourcelumeDatasetDto {
                 + name + '\'' + ", sourceUri='"
                 + sourceUri + '\'' + ", licenseId='"
                 + licenseId + '\'' + ", guid='"
-                + guid + '\'' + '}';
+                + guid + '\'' + ", recordStatus="
+                + recordStatus + '}';
     }
 }

@@ -26,10 +26,11 @@ repo creation, and initial discussion") the codebase is organized as a
 |---|---|
 | `sourcelume-registry-typedefs` | Backend type definitions (JSON resources) |
 | `sourcelume-registry-common` | DTOs mapped from `sourcelume-spec`, Jakarta Validation annotations, exceptions, spec resource loader — framework-free (Jakarta API + Jackson only) |
-| `sourcelume-registry-core` | Backend-neutral `AtlasAdapter` SPI (API) and the `RecordValidator` validation SPI — no framework, no backend SDK dependencies |
+| `sourcelume-registry-core` | Backend-neutral `AtlasAdapter` SPI (API), the `RecordValidator` validation SPI, and the ingest SPI (`IngestService`) — no framework, no backend SDK dependencies |
 | `sourcelume-registry-validation-jsonschema` | Validation plugin: "json-schema" stage (networknt, draft 2020-12, format assertions) |
 | `sourcelume-registry-validation-shacl` | Validation plugin: "shacl" stage (Apache Jena, offline context inlining) |
-| `sourcelume-registry-runtime-quarkus` | Quarkus runtime: thin REST `AtlasAdapter` implementation over the core SPI, startup bootstrap (spec verification + typedef registration), SmallRye Health readiness, Docker packaging |
+| `sourcelume-registry-atlas-adapter` | Thin REST `AtlasAdapter` implementation over the core SPI (JDK HttpClient), used by the Quarkus REST runtime |
+| `sourcelume-registry-runtime-quarkus` | Quarkus REST runtime: ingest endpoints (`POST /records`, `GET /records/{id}`), pre-flight validation endpoint, startup bootstrap (spec verification + typedef registration), SmallRye Health readiness, Docker packaging |
 
 Runtime modules build on the framework-free core as separate modules and own
 their framework dependencies (the Quarkus BOM is imported in the runtime

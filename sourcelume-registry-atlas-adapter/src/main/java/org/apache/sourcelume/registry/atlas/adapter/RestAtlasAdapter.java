@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.sourcelume.registry.runtime.quarkus.adapter;
+package org.apache.sourcelume.registry.atlas.adapter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,12 +32,15 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
+import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
+import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.core.AtlasAdapter;
 import org.apache.sourcelume.registry.core.AtlasAdapter.TypeDefinitionModel;
 import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
-import org.apache.sourcelume.registry.runtime.quarkus.config.SourcelumeAtlasProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,6 +58,7 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code PUT  /api/atlas/v2/types/typedefs} — update typedefs (on 409/conflict)</li>
  *   <li>{@code POST /api/atlas/v2/entity/bulk} — create/update a dataset entity</li>
  *   <li>{@code GET  /api/atlas/v2/entity/bulk?typeName=...&attr:qualifiedName=...} — lookup</li>
+ *   <li>{@code POST /api/atlas/v2/search/basic} — find datasets by record status</li>
  * </ul>
  *
  * <p>Atlas-specific JSON shapes live here and only here. The SPI stays
@@ -128,8 +132,10 @@ public class RestAtlasAdapter implements AtlasAdapter {
                 return new TypeDefinitionModel(
                         typeDefs.getSourceResource(), resp.body().getBytes(StandardCharsets.UTF_8), count);
             }
-            // Atlas returns 409/conflict when a typedef already exists — fall back to PUT (update).
-            if (resp.statusCode() == 409 || resp.statusCode() == 400) {
+            // Atlas returns 409/conflict when a typedef already exists — fall back to PUT
+            // (update). A 400 is a genuinely malformed request: retrying it as an
+            // update would only mask the original error with the PUT's response.
+            if (resp.statusCode() == 409) {
                 log.warn("create typedefs failed ({}). Attempting PUT (update)...", resp.statusCode());
                 HttpResponse<String> putResp = sendJson("PUT", "/api/atlas/v2/types/typedefs", body);
                 if (putResp.statusCode() == 200 || putResp.statusCode() == 204) {
@@ -162,10 +168,23 @@ public class RestAtlasAdapter implements AtlasAdapter {
         entity.put("typeName", SourcelumeDatasetDto.TYPE_NAME);
         ObjectNode attributes = entity.putObject("attributes");
         attributes.put("qualifiedName", dataset.getQualifiedName());
-        attributes.put("name", dataset.getName());
+        // Atlas' Asset supertype requires a name on every entity, so the
+        // ingest path always provides one (a placeholder derived from the
+        // record id until validation writes the mapped name); the DTO keeps
+        // name optional for callers that are not the ingest path.
+        if (dataset.getName() != null) attributes.put("name", dataset.getName());
         if (dataset.getDescription() != null) attributes.put("description", dataset.getDescription());
         if (dataset.getSourceUri() != null) attributes.put("sourceUri", dataset.getSourceUri());
         if (dataset.getLicenseId() != null) attributes.put("licenseId", dataset.getLicenseId());
+        if (dataset.getRecordStatus() != null)
+            attributes.put("recordStatus", dataset.getRecordStatus().name());
+        if (dataset.getRawJsonLd() != null) attributes.put("rawJsonLd", dataset.getRawJsonLd());
+        if (dataset.getValidationIssues() != null) {
+            attributes.put("validationIssues", dataset.getValidationIssues());
+        }
+        if (dataset.getSha256() != null) attributes.put("sha256", dataset.getSha256());
+        if (dataset.getValidatedBy() != null) attributes.put("validatedBy", dataset.getValidatedBy());
+        if (dataset.getValidatedAt() != null) attributes.put("validatedAt", dataset.getValidatedAt());
 
         ObjectNode wrapper = objectMapper.createObjectNode();
         ArrayNode entities = wrapper.putArray("entities");
@@ -181,7 +200,9 @@ public class RestAtlasAdapter implements AtlasAdapter {
             JsonNode root = objectMapper.readTree(resp.body());
             String guid = extractGuid(root);
             log.info("Created/updated dataset entity '{}' with GUID: {}", dataset.getQualifiedName(), guid);
-            dataset.setGuid(guid);
+            // The caller's DTO is deliberately not mutated with the guid:
+            // upserts take DTOs that may be shared snapshots; the guid is
+            // returned instead, and reads resolve it via the qualified name.
             return guid;
         } catch (IOException e) {
             throw new AtlasAdapterException("I/O error persisting entity: " + e.getMessage(), 500, e);
@@ -195,8 +216,11 @@ public class RestAtlasAdapter implements AtlasAdapter {
     public SourcelumeDatasetDto getDatasetByQualifiedName(String qualifiedName) {
         try {
             String q = URLEncoder.encode(qualifiedName, StandardCharsets.UTF_8);
-            String path =
-                    "/api/atlas/v2/entity/bulk?typeName=" + SourcelumeDatasetDto.TYPE_NAME + "&attr:qualifiedName=" + q;
+            // /entity/bulk only resolves guids; the qualified name lookup
+            // goes through the unique-attribute endpoint, which answers with
+            // an AtlasEntityWithExtInfo ({"entity": {...}}) or 404.
+            String path = "/api/atlas/v2/entity/uniqueAttribute/type/" + SourcelumeDatasetDto.TYPE_NAME
+                    + "?attr:qualifiedName=" + q;
             HttpRequest req = baseRequest("GET", path).GET().build();
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() == 404) {
@@ -207,20 +231,11 @@ public class RestAtlasAdapter implements AtlasAdapter {
                         "Failed to fetch dataset entity from Atlas: " + resp.body(), resp.statusCode(), null);
             }
             JsonNode root = objectMapper.readTree(resp.body());
-            JsonNode entities = root.path("entities");
-            if (!entities.isArray() || entities.isEmpty()) {
+            JsonNode entity = root.path("entity");
+            if (entity.isMissingNode() || entity.isNull()) {
                 return null;
             }
-            JsonNode entity = entities.get(0);
-            JsonNode attrs = entity.path("attributes");
-            SourcelumeDatasetDto dto = new SourcelumeDatasetDto();
-            dto.setGuid(entity.path("guid").asText(null));
-            dto.setQualifiedName(attrs.path("qualifiedName").asText(null));
-            dto.setName(attrs.path("name").asText(null));
-            dto.setDescription(attrs.path("description").asText(null));
-            dto.setSourceUri(attrs.path("sourceUri").asText(null));
-            dto.setLicenseId(attrs.path("licenseId").asText(null));
-            return dto;
+            return toDatasetDto(entity);
         } catch (IOException e) {
             throw new AtlasAdapterException("I/O error fetching entity: " + e.getMessage(), 500, e);
         } catch (InterruptedException e) {
@@ -229,7 +244,95 @@ public class RestAtlasAdapter implements AtlasAdapter {
         }
     }
 
+    @Override
+    public List<SourcelumeDatasetDto> findDatasetsByStatus(RecordStatus status, int limit) {
+        if (status == null) {
+            throw new IllegalArgumentException("status cannot be null");
+        }
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be positive");
+        }
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("typeName", SourcelumeDatasetDto.TYPE_NAME);
+        body.put("excludeDeletedEntities", true);
+        body.put("limit", limit);
+        // Basic search returns entity headers only unless the attributes to
+        // load are listed explicitly — without this, rawJsonLd and
+        // recordStatus come back null and no record ever gets promoted.
+        ArrayNode attributes = body.putArray("attributes");
+        for (String attribute : new String[] {
+            "qualifiedName",
+            "name",
+            "description",
+            "sourceUri",
+            "licenseId",
+            "recordStatus",
+            "rawJsonLd",
+            "validationIssues",
+            "sha256",
+            "validatedBy",
+            "validatedAt"
+        }) {
+            attributes.add(attribute);
+        }
+        ObjectNode filters = body.putObject("entityFilters");
+        filters.put("attributeName", "recordStatus");
+        filters.put("operator", "=");
+        filters.put("attributeValue", status.name());
+
+        try {
+            HttpResponse<String> resp =
+                    sendJson("POST", "/api/atlas/v2/search/basic", objectMapper.writeValueAsString(body));
+            if (resp.statusCode() != 200) {
+                throw new AtlasAdapterException(
+                        "Failed to search datasets by status: " + resp.body(), resp.statusCode(), null);
+            }
+            JsonNode root = objectMapper.readTree(resp.body());
+            List<SourcelumeDatasetDto> result = new ArrayList<>();
+            for (JsonNode entity : root.path("entities")) {
+                result.add(toDatasetDto(entity));
+            }
+            return result;
+        } catch (IOException e) {
+            throw new AtlasAdapterException("I/O error searching datasets by status: " + e.getMessage(), 500, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AtlasAdapterException("Interrupted searching datasets by status", 500, e);
+        }
+    }
+
     // --- helpers ---
+
+    /**
+     * Maps one backend entity JSON node onto the DTO, including the ingest
+     * lifecycle fields. A recordStatus the domain does not know is a backend
+     * inconsistency and fails loudly instead of silently mapping to null.
+     */
+    private SourcelumeDatasetDto toDatasetDto(JsonNode entity) {
+        JsonNode attrs = entity.path("attributes");
+        SourcelumeDatasetDto dto = new SourcelumeDatasetDto();
+        dto.setGuid(entity.path("guid").asText(null));
+        dto.setQualifiedName(attrs.path("qualifiedName").asText(null));
+        dto.setName(attrs.path("name").asText(null));
+        dto.setDescription(attrs.path("description").asText(null));
+        dto.setSourceUri(attrs.path("sourceUri").asText(null));
+        dto.setLicenseId(attrs.path("licenseId").asText(null));
+        dto.setRawJsonLd(attrs.path("rawJsonLd").asText(null));
+        dto.setSha256(attrs.path("sha256").asText(null));
+        dto.setValidatedBy(attrs.path("validatedBy").asText(null));
+        dto.setValidatedAt(attrs.path("validatedAt").asText(null));
+        dto.setValidationIssues(attrs.path("validationIssues").asText(null));
+        JsonNode recordStatus = attrs.path("recordStatus");
+        if (recordStatus.isTextual()) {
+            try {
+                dto.setRecordStatus(RecordStatus.valueOf(recordStatus.asText()));
+            } catch (IllegalArgumentException e) {
+                throw new AtlasAdapterException(
+                        "Unknown record status on stored entity: '" + recordStatus.asText() + "'", 500, e);
+            }
+        }
+        return dto;
+    }
 
     private HttpRequest.Builder baseRequest(String method, String path) {
         String auth = properties.user() + ":" + properties.resolvedPassword();

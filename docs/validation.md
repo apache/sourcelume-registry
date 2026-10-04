@@ -79,14 +79,15 @@ if (!result.conforms()) {
 }
 ```
 
-The "no ingest without validation" policy itself belongs to the future
-`IngestService` in the core, which will enforce the chain on the way to
-persistence (throwing `SourcelumeValidationException`, see the core
-`ValidationService` for that contract). `ValidationService` deliberately
-surfaces only `VIOLATION` severities in the exception; until plugins produce
-meaningful warnings, keeping the exception contract small wins — revisit
-before `IngestService` cements it (e.g. by carrying the structured issues
-or logging warnings).
+The "no record without a verdict" policy is enforced by the core's
+`IngestService`, which the REST layer calls synchronously on every
+submission: it runs the chain and stores the record with its verdict —
+`VALIDATED` for a conforming record, `INCOMPLETE` with the structured
+issues attached otherwise (see [ingest.md](ingest.md)). The throwing
+`ValidationService` facade with its `SourcelumeValidationException` stays
+reserved for callers that want validation as a gate; the ingest pipeline
+deliberately treats a failed validation as data, not an exception — an
+INCOMPLETE record is a normal, expected outcome of curation.
 
 ### Runtime wiring and the validation endpoint
 

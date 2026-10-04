@@ -1,3 +1,20 @@
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    (the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+-->
+
 # Sourcelume Dev Support: Apache Atlas & Quarkus Runtime
 
 This directory provides local developer infrastructure to stand up an Apache Atlas
@@ -196,9 +213,10 @@ curl -u admin:atlasR0cks! -X POST http://localhost:21000/api/atlas/v2/entity/bul
     }]
   }'
 
-# Fetch the created entity by qualifiedName
+# Fetch the created entity by qualified name (the bulk endpoint only
+# resolves guids; the lookup goes through the unique-attribute endpoint)
 curl -s -u admin:atlasR0cks! \
-  "http://localhost:21000/api/atlas/v2/entity/bulk?typeName=sourcelume_dataset&attr:qualifiedName=sourcelume://datasets/sample-1" | jq .
+  "http://localhost:21000/api/atlas/v2/entity/uniqueAttribute/type/sourcelume_dataset?attr:qualifiedName=sourcelume://datasets/sample-1" | jq .
 ```
 
 #### 4. Automated tests
@@ -235,6 +253,29 @@ cd dev-support/vendor/atlas-docker
 docker compose -f docker-compose.atlas.yml down
 ```
 
-## License
+---
 
-This project is licensed under [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+### Running the integration tests (`-Pintegration-tests`)
+
+`mvn verify -Pintegration-tests` boots the vendored Atlas stack through
+Testcontainers and runs the end-to-end pipeline tests (`*IT`, see
+`sourcelume-registry-runtime-quarkus/src/.../it/`). Prerequisites: the
+vendored tooling and the locally built `atlas:latest` image (the steps
+above), plus a reachable Docker daemon.
+
+If your Docker daemon does not listen on the default socket path
+(`/var/run/docker.sock` — e.g. Rancher Desktop, colima), point the client
+at it via `DOCKER_HOST`. If the cleanup sidecar then cannot mount that
+socket, disable it with `TESTCONTAINERS_RYUK_DISABLED=true` (the compose
+stack is stopped explicitly by the test resource anyway):
+
+```bash
+export DOCKER_HOST=unix://<path-to-your-docker-socket>
+export TESTCONTAINERS_RYUK_DISABLED=true
+mvn verify -Pintegration-tests -pl sourcelume-registry-runtime-quarkus
+```
+
+The API version pin for the docker client lives in
+`sourcelume-registry-runtime-quarkus/src/test/resources/docker-java.properties`.
+If compose output is needed while debugging, add
+`-Dquarkus.log.console.level=INFO`.

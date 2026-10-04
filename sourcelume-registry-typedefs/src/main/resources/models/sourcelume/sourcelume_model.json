@@ -1,12 +1,28 @@
 {
-  "enumDefs": [],
+  "enumDefs": [
+    {
+      "name": "sourcelume_record_status",
+      "typeVersion": "1.0",
+      "description": "Validation verdict of a Sourcelume record: INCOMPLETE (validation failed, curatable), VALIDATED (validated and published). This is a Sourcelume domain state, independent of the backend's existence lifecycle (Atlas ACTIVE/DELETED/PURGED). qualifiedName is inherited from Referenceable via DataSet and intentionally not redeclared.",
+      "elementDefs": [
+        {
+          "ordinal": 0,
+          "value": "INCOMPLETE"
+        },
+        {
+          "ordinal": 1,
+          "value": "VALIDATED"
+        }
+      ]
+    }
+  ],
   "structDefs": [],
   "classificationDefs": [],
   "entityDefs": [
     {
       "name": "sourcelume_dataset",
       "typeVersion": "1.0",
-      "description": "Placeholder entity for a dataset tracked by Sourcelume. Deliberately minimal - real attribute set will follow the sourcelume-spec schema once ingest/validation logic is built.",
+      "description": "Entity for a dataset tracked by Sourcelume, carrying the ingest lifecycle attributes plus the provenance attributes used by the ingest pipeline. The full sourcelume-spec attribute set follows as the spec evolves.",
       "superTypes": [
         "DataSet"
       ],
@@ -24,6 +40,57 @@
           "typeName": "string",
           "cardinality": "SINGLE",
           "isIndexable": true,
+          "isOptional": true,
+          "isUnique": false
+        },
+        {
+          "name": "recordStatus",
+          "typeName": "sourcelume_record_status",
+          "cardinality": "SINGLE",
+          "isIndexable": true,
+          "isOptional": true,
+          "isUnique": false
+        },
+        {
+          "name": "rawJsonLd",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isIndexable": false,
+          "isOptional": true,
+          "isUnique": false
+        },
+        {
+          "name": "validationIssues",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isIndexable": false,
+          "isOptional": true,
+          "isUnique": false
+        },
+        {
+          "name": "sha256",
+          "typeName": "string",
+          "description": "Hex SHA-256 over the received request bytes, so the stored document can be checked against what was actually submitted.",
+          "cardinality": "SINGLE",
+          "isIndexable": false,
+          "isOptional": true,
+          "isUnique": false
+        },
+        {
+          "name": "validatedBy",
+          "typeName": "string",
+          "description": "The validator chain that produced the verdict (comma-separated validator ids).",
+          "cardinality": "SINGLE",
+          "isIndexable": false,
+          "isOptional": true,
+          "isUnique": false
+        },
+        {
+          "name": "validatedAt",
+          "typeName": "string",
+          "description": "When the verdict was produced (ISO-8601, UTC).",
+          "cardinality": "SINGLE",
+          "isIndexable": false,
           "isOptional": true,
           "isUnique": false
         }
