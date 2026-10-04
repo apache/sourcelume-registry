@@ -34,7 +34,7 @@ import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.core.AtlasAdapter;
 import org.apache.sourcelume.registry.core.ingest.IngestResult;
 import org.apache.sourcelume.registry.core.validation.ValidatorChain;
-import org.apache.sourcelume.registry.ingest.worker.service.IngestServiceImpl;
+import org.apache.sourcelume.registry.runtime.quarkus.ingest.service.IngestServiceImpl;
 import org.apache.sourcelume.registry.runtime.quarkus.bootstrap.AtlasBootstrapService;
 import org.junit.jupiter.api.Test;
 

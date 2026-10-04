@@ -140,12 +140,6 @@
     <!-- The ingest worker module carries the promotion implementation
              (IngestService); the integration test drives it inline against
              the same Atlas the REST resource writes to. -->
-    <dependency>
-      <groupId>org.apache.sourcelume</groupId>
-      <artifactId>sourcelume-registry-ingest-worker</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
   </dependencies>
 
   <build>

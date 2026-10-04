@@ -50,20 +50,17 @@
         AtlasAdapter implementation) build on this core as separate modules.
         Java 21 baseline.</description>
 
-  <modules>
-    <module>sourcelume-registry-typedefs</module>
-    <module>sourcelume-registry-common</module>
-    <module>sourcelume-registry-core</module>
-    <!-- Atlas REST adapter implementing the core AtlasAdapter SPI, shared
-         by the REST runtime and the ingest worker. -->
-    <module>sourcelume-registry-atlas-adapter</module>
-    <!-- Headless ingest worker: polls PENDING records, validates, promotes. -->
-    <module>sourcelume-registry-ingest-worker</module>
-    <!-- Validation plugins: discovered via the core RecordValidator SPI
-         (ServiceLoader), each owning its validation machinery. -->
-    <module>sourcelume-registry-validation-jsonschema</module>
-    <module>sourcelume-registry-validation-shacl</module>
-    <!-- Runtime modules own their framework dependencies; the parent stays
+    <modules>
+        <module>sourcelume-registry-typedefs</module>
+        <module>sourcelume-registry-common</module>
+        <module>sourcelume-registry-core</module>
+        <!-- Atlas REST adapter implementing the core AtlasAdapter SPI. -->
+        <module>sourcelume-registry-atlas-adapter</module>
+        <!-- Validation plugins: discovered via the core RecordValidator SPI
+             (ServiceLoader), each owning its validation machinery. -->
+        <module>sourcelume-registry-validation-jsonschema</module>
+        <module>sourcelume-registry-validation-shacl</module>
+        <!-- Runtime modules own their framework dependencies; the parent stays
              framework-free. The Quarkus runtime imports the Quarkus BOM in its
              own dependencyManagement. -->
     <module>sourcelume-registry-runtime-quarkus</module>

@@ -58,7 +58,7 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code PUT  /api/atlas/v2/types/typedefs} — update typedefs (on 409/conflict)</li>
  *   <li>{@code POST /api/atlas/v2/entity/bulk} — create/update a dataset entity</li>
  *   <li>{@code GET  /api/atlas/v2/entity/bulk?typeName=...&attr:qualifiedName=...} — lookup</li>
- *   <li>{@code POST /api/atlas/v2/search/basic} — find datasets by record status (worker poll)</li>
+ *   <li>{@code POST /api/atlas/v2/search/basic} — find datasets by record status</li>
  * </ul>
  *
  * <p>Atlas-specific JSON shapes live here and only here. The SPI stays

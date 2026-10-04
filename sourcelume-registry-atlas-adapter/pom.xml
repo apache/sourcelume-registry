@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
-  <!--
+    <!--
 
         Licensed to the Apache Software Foundation (ASF) under one or more
         contributor license agreements.  See the NOTICE file distributed with
@@ -19,107 +21,109 @@
         limitations under the License.
     -->
 
-  <modelVersion>4.0.0</modelVersion>
+    <modelVersion>4.0.0</modelVersion>
 
-  <parent>
-    <groupId>org.apache.sourcelume</groupId>
-    <artifactId>sourcelume-registry</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
-  </parent>
+    <parent>
+        <groupId>org.apache.sourcelume</groupId>
+        <artifactId>sourcelume-registry</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
 
-  <artifactId>sourcelume-registry-atlas-adapter</artifactId>
-  <packaging>jar</packaging>
-  <name>Apache Sourcelume Registry - Atlas Adapter</name>
+    <artifactId>sourcelume-registry-atlas-adapter</artifactId>
+    <name>Apache Sourcelume Registry - Atlas Adapter</name>
+    <packaging>jar</packaging>
 
-  <description>Thin REST client implementation of the framework-free AtlasAdapter
-        SPI, shared by the Quarkus REST runtime and the ingest worker. Talks
+    <description>
+        Thin REST client implementation of the framework-free AtlasAdapter
+        SPI, used by the Quarkus REST runtime. Talks
         to the Apache Atlas REST API directly (JDK HttpClient, Jackson),
         without atlas-client-v2 / atlas-intg. The adapter code itself is
         framework-free; it carries Quarkus annotations (CDI scope, config
         mapping) because it lives only inside Quarkus applications, which
         discover its beans and config mapping through the Jandex index this
-        module produces.</description>
+        module produces.
+    </description>
 
-  <dependencyManagement>
-    <dependencies>
-      <!-- Quarkus BOM: manages smallrye-config and the CDI API for the
+    <dependencyManagement>
+        <dependencies>
+            <!-- Quarkus BOM: manages smallrye-config and the CDI API for the
                  annotations used here. The parent dependencyManagement stays
                  framework-free. -->
-      <dependency>
-        <groupId>io.quarkus</groupId>
-        <artifactId>quarkus-bom</artifactId>
-        <version>${quarkus.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
+            <dependency>
+                <groupId>io.quarkus</groupId>
+                <artifactId>quarkus-bom</artifactId>
+                <version>${quarkus.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Framework-free registry core: the AtlasAdapter SPI this module implements -->
+        <dependency>
+            <groupId>org.apache.sourcelume</groupId>
+            <artifactId>sourcelume-registry-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.sourcelume</groupId>
+            <artifactId>sourcelume-registry-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Jackson for the wire payloads (version from the parent BOM import) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- Quarkus-adjacent annotations: CDI scope + SmallRye config mapping -->
+        <dependency>
+            <groupId>io.smallrye.config</groupId>
+            <artifactId>smallrye-config</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.enterprise</groupId>
+            <artifactId>jakarta.enterprise.cdi-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- Test: loadTypeDefs reads the bundled typedef JSON from the classpath -->
+        <dependency>
+            <groupId>org.apache.sourcelume</groupId>
+            <artifactId>sourcelume-registry-typedefs</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
-  </dependencyManagement>
 
-  <dependencies>
-    <!-- Framework-free registry core: the AtlasAdapter SPI this module implements -->
-    <dependency>
-      <groupId>org.apache.sourcelume</groupId>
-      <artifactId>sourcelume-registry-core</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.sourcelume</groupId>
-      <artifactId>sourcelume-registry-common</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-
-    <!-- Jackson for the wire payloads (version from the parent BOM import) -->
-    <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-    </dependency>
-
-    <!-- Quarkus-adjacent annotations: CDI scope + SmallRye config mapping -->
-    <dependency>
-      <groupId>io.smallrye.config</groupId>
-      <artifactId>smallrye-config</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>jakarta.enterprise</groupId>
-      <artifactId>jakarta.enterprise.cdi-api</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-api</artifactId>
-    </dependency>
-
-    <!-- Test: loadTypeDefs reads the bundled typedef JSON from the classpath -->
-    <dependency>
-      <groupId>org.apache.sourcelume</groupId>
-      <artifactId>sourcelume-registry-typedefs</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <scope>test</scope>
-    </dependency>
-  </dependencies>
-
-  <build>
-    <plugins>
-      <!-- Produces META-INF/jandex.idx so Quarkus applications pick up the
+    <build>
+        <plugins>
+            <!-- Produces META-INF/jandex.idx so Quarkus applications pick up the
                  adapter's CDI bean and @ConfigMapping interface from this jar. -->
-      <plugin>
-        <groupId>org.jboss.jandex</groupId>
-        <artifactId>jandex-maven-plugin</artifactId>
-        <version>1.2.3</version>
-        <executions>
-          <execution>
-            <id>make-index</id>
-            <goals>
-              <goal>jandex</goal>
-            </goals>
-          </execution>
-        </executions>
-      </plugin>
-    </plugins>
-  </build>
+            <plugin>
+                <groupId>org.jboss.jandex</groupId>
+                <artifactId>jandex-maven-plugin</artifactId>
+                <version>1.2.3</version>
+                <executions>
+                    <execution>
+                        <id>make-index</id>
+                        <goals>
+                            <goal>jandex</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

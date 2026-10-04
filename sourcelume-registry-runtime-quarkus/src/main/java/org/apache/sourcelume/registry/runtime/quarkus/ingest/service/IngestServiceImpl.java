@@ -1,0 +1,109 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.sourcelume.registry.runtime.quarkus.ingest.service;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.apache.sourcelume.registry.common.dto.RecordStatus;
+import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
+import org.apache.sourcelume.registry.common.mapper.ProvenanceRecordMapper;
+import org.apache.sourcelume.registry.core.AtlasAdapter;
+import org.apache.sourcelume.registry.core.ingest.IngestResult;
+import org.apache.sourcelume.registry.core.ingest.IngestService;
+import org.apache.sourcelume.registry.core.validation.ValidationIssue;
+import org.apache.sourcelume.registry.core.validation.ValidationResult;
+import org.apache.sourcelume.registry.core.validation.ValidatorChain;
+
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * The ingest pipeline: validate a submitted record through the plugin
+ * chain and store the verdict on the entity. Called synchronously by the
+ * REST resource today — and it is the same method a queue consumer would
+ * call the day a slow validation step (attestation, and only then a real
+ * queue) makes asynchronous processing worth its price.
+ */
+@ApplicationScoped
+public class IngestServiceImpl implements IngestService {
+
+    private final ValidatorChain validatorChain;
+    private final AtlasAdapter atlasAdapter;
+    private final ObjectMapper objectMapper;
+
+    @Inject
+    public IngestServiceImpl(ValidatorChain validatorChain, AtlasAdapter atlasAdapter, ObjectMapper objectMapper) {
+        this.validatorChain = validatorChain;
+        this.atlasAdapter = atlasAdapter;
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    public IngestResult process(SourcelumeDatasetDto submitted) {
+        Objects.requireNonNull(submitted, "submitted");
+
+        ValidationResult validation = validatorChain.validate(submitted.getRawJsonLd());
+        SourcelumeDatasetDto verdict = validation.conforms() ? promoteToActive(submitted)
+                : markIncomplete(submitted, validation);
+
+        atlasAdapter.createOrUpdateDatasetEntity(verdict);
+        return new IngestResult(verdict.getQualifiedName(), verdict.getRecordStatus(), validation);
+    }
+
+    private SourcelumeDatasetDto promoteToActive(SourcelumeDatasetDto submitted) {
+        // Conforms → the record parses and satisfies schema and shapes, so
+        // the mapped provenance attributes (name, licenseId, sourceUri) are
+        // safe to write. qualifiedName comes from the record's own id.
+        SourcelumeDatasetDto promoted =
+                ProvenanceRecordMapper.toDatasetEntity(ProvenanceRecordMapper.map(submitted.getRawJsonLd()));
+        promoted.setGuid(submitted.getGuid());
+        promoted.setRecordStatus(RecordStatus.ACTIVE);
+        promoted.setRawJsonLd(submitted.getRawJsonLd());
+        // Explicit clear — see CLEARED_VALIDATION_ISSUES. A resubmitted
+        // record previously stored its failure report, and the Atlas
+        // upsert merges attributes: an absent attribute keeps its value.
+        promoted.setValidationIssues(SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES);
+        return promoted;
+    }
+
+    private SourcelumeDatasetDto markIncomplete(SourcelumeDatasetDto submitted, ValidationResult validation) {
+        // Does not conform → the record may lack fields the entity mapping
+        // needs, so nothing is mapped; only the lifecycle verdict is stored.
+        SourcelumeDatasetDto incomplete = new SourcelumeDatasetDto();
+        incomplete.setQualifiedName(submitted.getQualifiedName());
+        incomplete.setGuid(submitted.getGuid());
+        // Atlas requires a name on every entity write (mandatory on the
+        // Asset supertype), so the placeholder name travels along — the
+        // verdict would otherwise be rejected.
+        incomplete.setName(submitted.getName());
+        incomplete.setRecordStatus(RecordStatus.INCOMPLETE);
+        incomplete.setRawJsonLd(submitted.getRawJsonLd());
+        incomplete.setValidationIssues(toIssuesJson(validation.issues()));
+        return incomplete;
+    }
+
+    private String toIssuesJson(List<ValidationIssue> issues) {
+        try {
+            return objectMapper.writeValueAsString(issues);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Could not serialize validation issues", e);
+        }
+    }
+}

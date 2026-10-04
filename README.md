@@ -29,9 +29,8 @@ repo creation, and initial discussion") the codebase is organized as a
 | `sourcelume-registry-core` | Backend-neutral `AtlasAdapter` SPI (API), the `RecordValidator` validation SPI, and the ingest SPI (`IngestService`) — no framework, no backend SDK dependencies |
 | `sourcelume-registry-validation-jsonschema` | Validation plugin: "json-schema" stage (networknt, draft 2020-12, format assertions) |
 | `sourcelume-registry-validation-shacl` | Validation plugin: "shacl" stage (Apache Jena, offline context inlining) |
-| `sourcelume-registry-atlas-adapter` | Thin REST `AtlasAdapter` implementation over the core SPI (JDK HttpClient), shared by the runtime and the ingest worker |
+| `sourcelume-registry-atlas-adapter` | Thin REST `AtlasAdapter` implementation over the core SPI (JDK HttpClient), used by the Quarkus REST runtime |
 | `sourcelume-registry-runtime-quarkus` | Quarkus REST runtime: ingest endpoints (`POST /records`, `GET /records/{id}`), pre-flight validation endpoint, startup bootstrap (spec verification + typedef registration), SmallRye Health readiness, Docker packaging |
-| `sourcelume-registry-ingest-worker` | Headless ingest worker: polls Atlas for `PENDING` records, validates them with the plugin chain, promotes to `ACTIVE`/`INCOMPLETE` — see [docs/ingest.md](docs/ingest.md) |
 
 Runtime modules build on the framework-free core as separate modules and own
 their framework dependencies (the Quarkus BOM is imported in the runtime
@@ -72,21 +71,6 @@ Readiness (Atlas connectivity) is exposed at
 `http://localhost:8082/q/health/ready`; metrics at `/q/metrics`.
 Configuration lives under the `sourcelume.atlas.*` properties
 (`sourcelume-registry-runtime-quarkus/src/main/resources/application.properties`).
-
-## Running the ingest worker
-
-The compose stack above also runs the ingest worker, which polls Atlas
-for `PENDING` records (submitted via `POST /records`) and promotes them
-to `ACTIVE` or `INCOMPLETE`. In dev mode:
-
-```bash
-mvn -pl sourcelume-registry-ingest-worker quarkus:dev
-```
-
-The poll loop is tuned via `sourcelume.ingest.poll-interval` and
-`sourcelume.ingest.batch-size`. The record lifecycle, status semantics,
-and the "no ACTIVE record without validation" guarantee are documented
-in [docs/ingest.md](docs/ingest.md).
 
 ## Get involved
 

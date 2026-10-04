@@ -15,10 +15,10 @@
 # limitations under the License.
 #
 
-# Apache Sourcelume Registry — Quarkus runtime + ingest worker containers.
+# Apache Sourcelume Registry — Quarkus runtime container.
 # The Apache Atlas backend is stood up via dev-support/ (see dev-support/README.md);
-# this compose runs the registry runtime and the ingest worker connected to
-# Atlas via the shared `sourcelume-network`.
+# this compose runs the registry runtime connected to Atlas via the shared
+# `sourcelume-network`.
 
 networks:
   sourcelume-network:
@@ -45,34 +45,6 @@ services:
       - sourcelume-network
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8082/q/health/ready"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    restart: on-failure
-
-  # Headless ingest worker: polls Atlas for PENDING records, validates them
-  # with the plugin chain, promotes to ACTIVE/INCOMPLETE. Same Atlas config
-  # as the registry runtime; the poll loop is tuned via the env vars below.
-  ingest-worker:
-    build:
-      context: .
-      dockerfile: sourcelume-registry-ingest-worker/Dockerfile
-    image: apache/sourcelume-registry-ingest-worker:0.0.1
-    container_name: sourcelume-ingest-worker
-    environment:
-      SOURCELUME_ATLAS_URL: ${SOURCELUME_ATLAS_URL:-http://atlas:21000}
-      SOURCELUME_ATLAS_USER: ${SOURCELUME_ATLAS_USER:-admin}
-      SOURCELUME_ATLAS_PASSWORD: ${SOURCELUME_ATLAS_PASSWORD:-atlasR0cks!}
-      SOURCELUME_ATLAS_PASSWORD_FILE: ${SOURCELUME_ATLAS_PASSWORD_FILE:-}
-      SOURCELUME_ATLAS_BOOTSTRAP_ON_STARTUP: "false"
-      SOURCELUME_INGEST_POLL_INTERVAL: ${SOURCELUME_INGEST_POLL_INTERVAL:-5s}
-      SOURCELUME_INGEST_BATCH_SIZE: ${SOURCELUME_INGEST_BATCH_SIZE:-20}
-      JAVA_OPTS: "-XX:+UseG1GC -XX:MaxRAMPercentage=75.0"
-    networks:
-      - sourcelume-network
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/q/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 3
