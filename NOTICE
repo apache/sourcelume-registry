@@ -1,0 +1,18 @@
+Apache Sourcelume Registry
+Copyright 2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (https://www.apache.org/).
+
+ =========================================================================
+ ==  Notice file for the sourcelume-registry-validation-shacl and     ==
+ ==  sourcelume-registry-runtime-quarkus modules                     ==
+ =========================================================================
+
+These modules depend on the Apache Jena SHACL engine, which transitively
+pulls in org.glassfish:jakarta.json 2.0.1 (Eclipse Public License 2.0 /
+GNU General Public License version 2 with Classpath Exception - ASF
+license category B). Source in this repository does not bundle any of
+these binaries; a binary distribution (e.g. the Quarkus fast-jar) that
+ships jakarta.json must carry the corresponding license and notice text,
+as described in docs/validation.md.
