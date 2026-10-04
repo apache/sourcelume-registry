@@ -182,6 +182,9 @@ public class RestAtlasAdapter implements AtlasAdapter {
         if (dataset.getValidationIssues() != null) {
             attributes.put("validationIssues", dataset.getValidationIssues());
         }
+        if (dataset.getSha256() != null) attributes.put("sha256", dataset.getSha256());
+        if (dataset.getValidatedBy() != null) attributes.put("validatedBy", dataset.getValidatedBy());
+        if (dataset.getValidatedAt() != null) attributes.put("validatedAt", dataset.getValidatedAt());
 
         ObjectNode wrapper = objectMapper.createObjectNode();
         ArrayNode entities = wrapper.putArray("entities");
@@ -265,7 +268,10 @@ public class RestAtlasAdapter implements AtlasAdapter {
             "licenseId",
             "recordStatus",
             "rawJsonLd",
-            "validationIssues"
+            "validationIssues",
+            "sha256",
+            "validatedBy",
+            "validatedAt"
         }) {
             attributes.add(attribute);
         }
@@ -312,6 +318,9 @@ public class RestAtlasAdapter implements AtlasAdapter {
         dto.setSourceUri(attrs.path("sourceUri").asText(null));
         dto.setLicenseId(attrs.path("licenseId").asText(null));
         dto.setRawJsonLd(attrs.path("rawJsonLd").asText(null));
+        dto.setSha256(attrs.path("sha256").asText(null));
+        dto.setValidatedBy(attrs.path("validatedBy").asText(null));
+        dto.setValidatedAt(attrs.path("validatedAt").asText(null));
         dto.setValidationIssues(attrs.path("validationIssues").asText(null));
         JsonNode recordStatus = attrs.path("recordStatus");
         if (recordStatus.isTextual()) {

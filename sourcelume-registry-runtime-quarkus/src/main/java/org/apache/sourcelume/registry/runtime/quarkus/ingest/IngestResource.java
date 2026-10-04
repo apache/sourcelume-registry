@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.sourcelume.registry.runtime.quarkus.ingest;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -29,17 +28,16 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import org.apache.sourcelume.registry.common.dto.RecordStatus;
-import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
-import org.apache.sourcelume.registry.core.ingest.IngestResult;
-import org.apache.sourcelume.registry.core.ingest.IngestService;
-import org.apache.sourcelume.registry.core.validation.ValidationResult;
-import org.apache.sourcelume.registry.common.mapper.ProvenanceRecordMapper;
-import org.apache.sourcelume.registry.core.AtlasAdapter;
-
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import org.apache.sourcelume.registry.common.dto.RecordStatus;
+import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
+import org.apache.sourcelume.registry.common.mapper.ProvenanceRecordMapper;
+import org.apache.sourcelume.registry.core.AtlasAdapter;
+import org.apache.sourcelume.registry.core.ingest.IngestResult;
+import org.apache.sourcelume.registry.core.ingest.IngestService;
+import org.apache.sourcelume.registry.core.validation.ValidationResult;
 
 /**
  * Ingest endpoints. {@code POST /records} validates a submitted record
@@ -75,12 +73,15 @@ public class IngestResource {
     @POST
     @Consumes({MediaType.APPLICATION_JSON, "application/ld+json"})
     @Produces(MediaType.APPLICATION_JSON)
-    public Response submit(String rawJsonLd) {
+    public Response submit(byte[] received) {
+        String rawJsonLd = new String(received, StandardCharsets.UTF_8);
         String recordId;
         try {
             recordId = ProvenanceRecordMapper.extractRecordId(rawJsonLd);
         } catch (IllegalArgumentException e) {
-            return Response.status(400).entity(new ErrorResponse(e.getMessage())).build();
+            return Response.status(400)
+                    .entity(new ErrorResponse(e.getMessage()))
+                    .build();
         }
 
         SourcelumeDatasetDto existing = atlasAdapter.getDatasetByQualifiedName(recordId);
@@ -97,6 +98,9 @@ public class IngestResource {
         SourcelumeDatasetDto submitted = new SourcelumeDatasetDto();
         submitted.setQualifiedName(recordId);
         submitted.setRawJsonLd(rawJsonLd);
+        // The digest covers the received bytes, not the decoded string —
+        // "byte for byte" for real, e.g. for later signature checks.
+        submitted.setSha256(sha256Hex(received));
         // Atlas requires a name on every entity write; a conforming
         // record's promotion overwrites the placeholder with the mapped
         // name, an INCOMPLETE verdict keeps it.
@@ -118,7 +122,9 @@ public class IngestResource {
     public Response status(@PathParam("id") String id) {
         SourcelumeDatasetDto dataset = atlasAdapter.getDatasetByQualifiedName(id);
         if (dataset == null) {
-            return Response.status(404).entity(new ErrorResponse("No record for id: " + id)).build();
+            return Response.status(404)
+                    .entity(new ErrorResponse("No record for id: " + id))
+                    .build();
         }
         return Response.ok(RecordResponse.of(dataset)).build();
     }
@@ -134,6 +140,22 @@ public class IngestResource {
         return candidate.isBlank() ? recordId : candidate;
     }
 
+    /** Hex SHA-256 over the received bytes. */
+    private static String sha256Hex(byte[] received) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(received);
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                hex.append(Character.forDigit((b >> 4) & 0xF, 16));
+                hex.append(Character.forDigit(b & 0xF, 16));
+            }
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
+    }
+
     private static URI locationOf(String recordId) {
         String encoded = URLEncoder.encode(recordId, StandardCharsets.UTF_8).replace("+", "%20");
         return URI.create("/records/" + encoded);
@@ -144,13 +166,24 @@ public class IngestResource {
      * — for an INCOMPLETE record — the issues to fix.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record IngestResponse(String qualifiedName, RecordStatus recordStatus,
-            String validationIssues) {
+    public record IngestResponse(
+            String qualifiedName,
+            RecordStatus recordStatus,
+            String validationIssues,
+            String sha256,
+            String validatedBy,
+            String validatedAt) {
 
         static IngestResponse of(IngestResult result, ObjectMapper objectMapper) {
-            String issues = result.validation().issues().isEmpty() ? null
-                    : toIssuesJson(result.validation(), objectMapper);
-            return new IngestResponse(result.qualifiedName(), result.status(), issues);
+            String issues =
+                    result.validation().issues().isEmpty() ? null : toIssuesJson(result.validation(), objectMapper);
+            return new IngestResponse(
+                    result.qualifiedName(),
+                    result.status(),
+                    issues,
+                    result.sha256(),
+                    result.validatedBy(),
+                    result.validatedAt());
         }
 
         private static String toIssuesJson(ValidationResult validation, ObjectMapper objectMapper) {
@@ -163,8 +196,7 @@ public class IngestResource {
     }
 
     /** Wire DTO for the 409 response: what is in the way, and in which state. */
-    public record ConflictResponse(String qualifiedName, RecordStatus recordStatus) {
-    }
+    public record ConflictResponse(String qualifiedName, RecordStatus recordStatus) {}
 
     /**
      * Wire DTO for the status view of a stored record. Absent fields mean
@@ -172,20 +204,29 @@ public class IngestResource {
      * the cleared sentinel is an internal storage detail.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record RecordResponse(String qualifiedName, RecordStatus recordStatus, String name,
-            String licenseId, String sourceUri, String validationIssues) {
+    public record RecordResponse(
+            String qualifiedName,
+            RecordStatus recordStatus,
+            String name,
+            String licenseId,
+            String sourceUri,
+            String validationIssues) {
 
         static RecordResponse of(SourcelumeDatasetDto dataset) {
             String issues = dataset.getValidationIssues();
             if (SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES.equals(issues)) {
                 issues = null;
             }
-            return new RecordResponse(dataset.getQualifiedName(), dataset.getRecordStatus(),
-                    dataset.getName(), dataset.getLicenseId(), dataset.getSourceUri(), issues);
+            return new RecordResponse(
+                    dataset.getQualifiedName(),
+                    dataset.getRecordStatus(),
+                    dataset.getName(),
+                    dataset.getLicenseId(),
+                    dataset.getSourceUri(),
+                    issues);
         }
     }
 
     /** Wire DTO for error responses. */
-    public record ErrorResponse(String message) {
-    }
+    public record ErrorResponse(String message) {}
 }

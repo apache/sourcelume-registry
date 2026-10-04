@@ -83,6 +83,19 @@ class TypeDefinitionModelTest {
         assertTrue(rawJsonLd.path("isOptional").asBoolean(), "same schema-evolution constraint as recordStatus");
         assertFalse(rawJsonLd.path("isIndexable").asBoolean());
 
+        JsonNode sha256 = attribute(attributes, "sha256");
+        assertEquals("string", sha256.path("typeName").asText());
+        assertTrue(sha256.path("isOptional").asBoolean());
+        assertFalse(sha256.path("isIndexable").asBoolean());
+
+        JsonNode validatedBy = attribute(attributes, "validatedBy");
+        assertEquals("string", validatedBy.path("typeName").asText());
+        assertTrue(validatedBy.path("isOptional").asBoolean());
+
+        JsonNode validatedAt = attribute(attributes, "validatedAt");
+        assertEquals("string", validatedAt.path("typeName").asText());
+        assertTrue(validatedAt.path("isOptional").asBoolean());
+
         JsonNode validationIssues = attribute(attributes, "validationIssues");
         assertEquals("string", validationIssues.path("typeName").asText());
         assertTrue(validationIssues.path("isOptional").asBoolean(), "issues only exist once a record was validated");

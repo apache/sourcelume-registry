@@ -36,17 +36,28 @@ class IngestResultTest {
         ValidationResult validation = ValidationResult.failed(
                 List.of(ValidationIssue.violation("json-schema", "/license", "missing license")));
 
-        IngestResult result = new IngestResult("https://example.org/records/one", RecordStatus.INCOMPLETE, validation);
+        IngestResult result = new IngestResult(
+                "https://example.org/records/one",
+                RecordStatus.INCOMPLETE,
+                validation,
+                "0123abc",
+                "json-schema,shacl",
+                "2026-10-04T14:00:00Z");
 
         assertEquals("https://example.org/records/one", result.qualifiedName());
         assertEquals(RecordStatus.INCOMPLETE, result.status());
         assertEquals(validation, result.validation());
+        assertEquals("0123abc", result.sha256());
+        assertEquals("json-schema,shacl", result.validatedBy());
+        assertEquals("2026-10-04T14:00:00Z", result.validatedAt());
     }
 
     @Test
     void isValueEqual() {
-        IngestResult a = new IngestResult("q", RecordStatus.VALIDATED, ValidationResult.OK);
-        IngestResult b = new IngestResult("q", RecordStatus.VALIDATED, ValidationResult.OK);
+        IngestResult a = new IngestResult(
+                "q", RecordStatus.VALIDATED, ValidationResult.OK, "abc", "chain", "2026-10-04T14:00:00Z");
+        IngestResult b = new IngestResult(
+                "q", RecordStatus.VALIDATED, ValidationResult.OK, "abc", "chain", "2026-10-04T14:00:00Z");
 
         assertEquals(a, b);
         assertEquals(a.hashCode(), b.hashCode());

@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,11 +14,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.sourcelume.registry.runtime.quarkus.ingest.service;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.core.AtlasAdapter;
@@ -26,15 +34,6 @@ import org.apache.sourcelume.registry.core.ingest.IngestResult;
 import org.apache.sourcelume.registry.core.validation.ValidatorChain;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests the ingest pipeline with the real validator chain (both plugins
@@ -60,7 +59,8 @@ class IngestServiceImplTest {
 
     @Test
     void conformingRecordAnswersValidatedWithMappedAttributes() {
-        SourcelumeDatasetDto submitted = submitted("https://sourcelume.apache.org/records/minimal-example", validRecord);
+        SourcelumeDatasetDto submitted =
+                submitted("https://sourcelume.apache.org/records/minimal-example", validRecord);
 
         IngestResult result = service.process(submitted);
 
@@ -74,8 +74,23 @@ class IngestServiceImplTest {
         assertEquals("https://www.apache.org/licenses/LICENSE-2.0", upserted.getLicenseId());
         assertEquals("https://example.org/datasets/minimal-example", upserted.getSourceUri());
         assertEquals(validRecord, upserted.getRawJsonLd(), "raw document must stay byte-identical");
-        assertEquals(SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES, upserted.getValidationIssues(),
+        assertEquals(
+                SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES,
+                upserted.getValidationIssues(),
                 "a validated promotion must explicitly clear a previous INCOMPLETE verdict");
+        assertVerdictContext(upserted, validRecord);
+    }
+
+    /** sha256 travels with the submission; the chain and the timestamp are stamped by the pipeline. */
+    private static void assertVerdictContext(SourcelumeDatasetDto upserted, String rawDocument) {
+        assertEquals(
+                Digests.sha256Hex(rawDocument.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                upserted.getSha256(),
+                "the digest of the received bytes travels with the verdict");
+        assertTrue(
+                upserted.getValidatedBy().contains("json"),
+                "the chain ids name the validators that judged the record: " + upserted.getValidatedBy());
+        assertNotNull(upserted.getValidatedAt(), "the verdict carries its timestamp");
     }
 
     @Test
@@ -90,11 +105,12 @@ class IngestServiceImplTest {
 
         SourcelumeDatasetDto upserted = adapter.upserted;
         assertEquals(RecordStatus.INCOMPLETE, upserted.getRecordStatus());
-        assertEquals("https://sourcelume.apache.org/records/invalid-missing-license",
-                upserted.getQualifiedName());
+        assertEquals("https://sourcelume.apache.org/records/invalid-missing-license", upserted.getQualifiedName());
         assertEquals(invalidRecord, upserted.getRawJsonLd());
         assertNull(upserted.getName(), "nothing is mapped for an INCOMPLETE record");
         assertNull(upserted.getLicenseId());
+
+        assertVerdictContext(upserted, invalidRecord);
 
         JsonNode issues = new ObjectMapper().readTree(upserted.getValidationIssues());
         assertTrue(issues.isArray(), "stored issues are a JSON array");
@@ -118,6 +134,8 @@ class IngestServiceImplTest {
         SourcelumeDatasetDto dto = new SourcelumeDatasetDto();
         dto.setQualifiedName(qualifiedName);
         dto.setRawJsonLd(rawJsonLd);
+        // the digest the REST layer computes over the received bytes
+        dto.setSha256(Digests.sha256Hex(rawJsonLd.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         // no status: the pipeline assigns the verdict — submissions carry none.
         return dto;
     }

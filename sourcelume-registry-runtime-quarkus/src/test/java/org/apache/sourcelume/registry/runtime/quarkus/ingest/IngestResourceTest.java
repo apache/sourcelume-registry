@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,25 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.sourcelume.registry.runtime.quarkus.ingest;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.ws.rs.core.Response;
+import java.net.URI;
+import java.util.List;
 import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.core.AtlasAdapter;
-import org.apache.sourcelume.registry.runtime.quarkus.ingest.service.IngestServiceImpl;
 import org.apache.sourcelume.registry.core.validation.ValidatorChain;
+import org.apache.sourcelume.registry.runtime.quarkus.ingest.service.IngestServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.net.URI;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Semantics of the ingest endpoints, with the real ingest pipeline
@@ -44,7 +42,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class IngestResourceTest {
 
     private static final String RECORD_ID = "https://sourcelume.apache.org/records/ingest-test";
-    private static final String VALID_RECORD = """
+    private static final String VALID_RECORD =
+            """
             {
               "@context": "https://sourcelume.apache.org/context/0.0.1/sourcelume.jsonld",
               "id": "https://sourcelume.apache.org/records/ingest-test",
@@ -61,12 +60,12 @@ class IngestResourceTest {
                                   "startTime": "2026-09-08T00:00:00Z" } ]
             }""";
 
-    private static final String INVALID_RECORD = VALID_RECORD.replace(
-            "\"license\": \"https://www.apache.org/licenses/LICENSE-2.0\",", "");
+    private static final String INVALID_RECORD =
+            VALID_RECORD.replace("\"license\": \"https://www.apache.org/licenses/LICENSE-2.0\",", "");
 
     private final FakeAtlasAdapter fake = new FakeAtlasAdapter();
-    private final IngestResource resource = new IngestResource(fake,
-            new IngestServiceImpl(ValidatorChain.discover(), fake, new ObjectMapper()), new ObjectMapper());
+    private final IngestResource resource = new IngestResource(
+            fake, new IngestServiceImpl(ValidatorChain.discover(), fake, new ObjectMapper()), new ObjectMapper());
 
     @BeforeEach
     void resetStore() {
@@ -75,50 +74,62 @@ class IngestResourceTest {
 
     @Test
     void validRecordAnswersWithItsVerdict() {
-        var response = resource.submit(VALID_RECORD);
+        var response = resource.submit(VALID_RECORD.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         assertEquals(201, response.getStatus());
-        assertEquals(URI.create("/records/https%3A%2F%2Fsourcelume.apache.org%2Frecords%2Fingest-test"),
+        assertEquals(
+                URI.create("/records/https%3A%2F%2Fsourcelume.apache.org%2Frecords%2Fingest-test"),
                 response.getLocation());
 
         IngestResource.IngestResponse body = (IngestResource.IngestResponse) response.getEntity();
         assertEquals(RECORD_ID, body.qualifiedName());
         assertEquals(RecordStatus.VALIDATED, body.recordStatus());
         assertNull(body.validationIssues(), "a validated record reports no issues");
+        assertEquals(
+                org.apache.sourcelume.registry.runtime.quarkus.ingest.service.Digests.sha256Hex(
+                        VALID_RECORD.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                body.sha256(),
+                "the digest covers the received bytes");
+        assertTrue(body.validatedBy().contains("json"), "the chain ids are reported");
+        assertNotNull(body.validatedAt(), "the verdict carries its timestamp");
 
         SourcelumeDatasetDto stored = fake.store.get(RECORD_ID);
         assertEquals(RecordStatus.VALIDATED, stored.getRecordStatus());
-        assertEquals("Ingest endpoint test record", stored.getName(),
-                "the mapped name replaces the placeholder");
+        assertEquals("Ingest endpoint test record", stored.getName(), "the mapped name replaces the placeholder");
         assertEquals("https://www.apache.org/licenses/LICENSE-2.0", stored.getLicenseId());
         assertEquals(VALID_RECORD, stored.getRawJsonLd(), "the stored document must be byte-identical");
+        assertEquals(body.sha256(), stored.getSha256());
     }
 
     @Test
     void invalidRecordBecomesIncompleteAndReportsItsIssues() {
-        var response = resource.submit(INVALID_RECORD);
+        var response = resource.submit(INVALID_RECORD.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         assertEquals(201, response.getStatus());
         IngestResource.IngestResponse body = (IngestResource.IngestResponse) response.getEntity();
         assertEquals(RecordStatus.INCOMPLETE, body.recordStatus());
-        assertTrue(body.validationIssues().toLowerCase().contains("license"),
+        assertTrue(
+                body.validationIssues().toLowerCase().contains("license"),
                 "the issues come with the response — no polling needed");
 
         SourcelumeDatasetDto stored = fake.store.get(RECORD_ID);
         assertEquals(RecordStatus.INCOMPLETE, stored.getRecordStatus());
-        assertEquals("ingest-test", stored.getName(),
+        assertEquals(
+                "ingest-test",
+                stored.getName(),
                 "Atlas requires a name — the placeholder stays on an INCOMPLETE record");
-        assertTrue(stored.getValidationIssues() != null
+        assertTrue(
+                stored.getValidationIssues() != null
                         && !SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES.equals(stored.getValidationIssues()),
                 "the pipeline stores the real failure report, not the sentinel");
     }
 
     @Test
     void correctedResubmissionOfAnIncompleteRecordAnswersWithItsVerdict() {
-        resource.submit(INVALID_RECORD);
+        resource.submit(INVALID_RECORD.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         fake.store.get(RECORD_ID).setValidationIssues("[{\"message\": \"missing license\"}]");
 
-        var response = resource.submit(VALID_RECORD);
+        var response = resource.submit(VALID_RECORD.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         assertEquals(200, response.getStatus());
         IngestResource.IngestResponse body = (IngestResource.IngestResponse) response.getEntity();
@@ -127,15 +138,17 @@ class IngestResourceTest {
 
         SourcelumeDatasetDto stored = fake.store.get(RECORD_ID);
         assertEquals(RecordStatus.VALIDATED, stored.getRecordStatus());
-        assertEquals(SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES, stored.getValidationIssues(),
+        assertEquals(
+                SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES,
+                stored.getValidationIssues(),
                 "the resubmission explicitly clears the old issues — see CLEARED_VALIDATION_ISSUES");
     }
 
     @Test
     void validatedRecordRejectsDuplicateSubmit() {
-        resource.submit(VALID_RECORD);
+        resource.submit(VALID_RECORD.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
-        var response = resource.submit(VALID_RECORD);
+        var response = resource.submit(VALID_RECORD.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         assertEquals(409, response.getStatus());
         IngestResource.ConflictResponse body = (IngestResource.ConflictResponse) response.getEntity();
@@ -145,14 +158,14 @@ class IngestResourceTest {
 
     @Test
     void recordWithoutAnIdIsRejected() {
-        var response = resource.submit("{\"name\": \"no id here\"}");
+        var response = resource.submit("{\"name\": \"no id here\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         assertEquals(400, response.getStatus());
     }
 
     @Test
     void unparseableBodyIsRejected() {
-        var response = resource.submit("this is not JSON");
+        var response = resource.submit("this is not JSON".getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         assertEquals(400, response.getStatus());
     }
@@ -166,7 +179,7 @@ class IngestResourceTest {
 
     @Test
     void statusReturnsRecordStateAndIssues() {
-        resource.submit(INVALID_RECORD);
+        resource.submit(INVALID_RECORD.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         fake.store.get(RECORD_ID).setValidationIssues("[{\"message\": \"missing license\"}]");
 
         var response = resource.status(RECORD_ID);
@@ -180,7 +193,7 @@ class IngestResourceTest {
 
     @Test
     void statusOfAValidatedRecordCarriesTheMappedAttributes() {
-        resource.submit(VALID_RECORD);
+        resource.submit(VALID_RECORD.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         var response = resource.status(RECORD_ID);
 

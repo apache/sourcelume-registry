@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,27 +14,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.sourcelume.registry.runtime.quarkus.it;
-
-import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.TestProfile;
-import jakarta.inject.Inject;
-import org.apache.sourcelume.registry.common.dto.RecordStatus;
-import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
-import org.apache.sourcelume.registry.core.AtlasAdapter;
-import org.apache.sourcelume.registry.runtime.quarkus.bootstrap.AtlasBootstrapService;
-import org.junit.jupiter.api.Test;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.TestProfile;
+import jakarta.inject.Inject;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+import org.apache.sourcelume.registry.common.dto.RecordStatus;
+import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
+import org.apache.sourcelume.registry.core.AtlasAdapter;
+import org.apache.sourcelume.registry.runtime.quarkus.bootstrap.AtlasBootstrapService;
+import org.junit.jupiter.api.Test;
 
 /**
  * End-to-end ingest against a real Apache Atlas 2.5.0 backend: the
@@ -61,20 +59,21 @@ class IngestPipelineIT {
         String recordId = uniqueId("valid");
         String body = fixture("/records/it-valid.jsonld", recordId);
 
-        String location = given()
-                .contentType("application/ld+json")
+        String location = given().contentType("application/ld+json")
                 .body(body)
-                .when().post("/records")
+                .when()
+                .post("/records")
                 .then()
                 .statusCode(201)
                 .body("qualifiedName", org.hamcrest.Matchers.equalTo(recordId))
                 .body("recordStatus", org.hamcrest.Matchers.equalTo("VALIDATED"))
-                .extract().header("Location");
+                .extract()
+                .header("Location");
 
         // The status view agrees, with the mapped attributes.
-        given()
-                .urlEncodingEnabled(false)
-                .when().get(location.replaceFirst("^https?://[^/]+", ""))
+        given().urlEncodingEnabled(false)
+                .when()
+                .get(location.replaceFirst("^https?://[^/]+", ""))
                 .then()
                 .statusCode(200)
                 .body("recordStatus", org.hamcrest.Matchers.equalTo("VALIDATED"))
@@ -84,6 +83,9 @@ class IngestPipelineIT {
         SourcelumeDatasetDto stored = atlasAdapter.getDatasetByQualifiedName(recordId);
         assertEquals(RecordStatus.VALIDATED, stored.getRecordStatus());
         assertEquals(SourcelumeDatasetDto.CLEARED_VALIDATION_ISSUES, stored.getValidationIssues());
+        assertEquals(64, stored.getSha256().length(), "the entity carries the received-bytes digest");
+        assertTrue(stored.getValidatedBy().contains("json"), "the entity names the chain");
+        assertNotNull(stored.getValidatedAt(), "the entity carries the verdict timestamp");
     }
 
     @Test
@@ -91,10 +93,10 @@ class IngestPipelineIT {
         String recordId = uniqueId("invalid");
         String body = fixture("/records/it-invalid.jsonld", recordId);
 
-        given()
-                .contentType("application/ld+json")
+        given().contentType("application/ld+json")
                 .body(body)
-                .when().post("/records")
+                .when()
+                .post("/records")
                 .then()
                 .statusCode(201)
                 .body("recordStatus", org.hamcrest.Matchers.equalTo("INCOMPLETE"));
@@ -111,11 +113,18 @@ class IngestPipelineIT {
         String invalid = fixture("/records/it-invalid.jsonld", recordId);
         String valid = fixture("/records/it-valid.jsonld", recordId);
 
-        given().contentType("application/ld+json").body(invalid).when().post("/records")
-                .then().statusCode(201);
+        given().contentType("application/ld+json")
+                .body(invalid)
+                .when()
+                .post("/records")
+                .then()
+                .statusCode(201);
 
         // The corrected record is validated in place of the old verdict.
-        given().contentType("application/ld+json").body(valid).when().post("/records")
+        given().contentType("application/ld+json")
+                .body(valid)
+                .when()
+                .post("/records")
                 .then()
                 .statusCode(200)
                 .body("recordStatus", org.hamcrest.Matchers.equalTo("VALIDATED"));
@@ -130,9 +139,16 @@ class IngestPipelineIT {
         String recordId = uniqueId("duplicate");
         String body = fixture("/records/it-valid.jsonld", recordId);
 
-        given().contentType("application/ld+json").body(body).when().post("/records")
-                .then().statusCode(201);
-        given().contentType("application/ld+json").body(body).when().post("/records")
+        given().contentType("application/ld+json")
+                .body(body)
+                .when()
+                .post("/records")
+                .then()
+                .statusCode(201);
+        given().contentType("application/ld+json")
+                .body(body)
+                .when()
+                .post("/records")
                 .then()
                 .statusCode(409)
                 .body("recordStatus", org.hamcrest.Matchers.equalTo("VALIDATED"));
@@ -143,7 +159,8 @@ class IngestPipelineIT {
         // The app boot already registered the type definitions; a second
         // registration must succeed on the existing type (mandatory
         // attributes cannot be added to an existing Atlas type).
-        assertTrue(bootstrapService.registerTypeDefs(bootstrapService.loadTypeDefs()),
+        assertTrue(
+                bootstrapService.registerTypeDefs(bootstrapService.loadTypeDefs()),
                 "re-registering the type definitions on an existing type must not fail");
     }
 
@@ -161,8 +178,7 @@ class IngestPipelineIT {
             String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             // Unique IRI per test: the shared Atlas instance keeps every
             // submitted record, and the id doubles as the qualified name.
-            return body.replaceFirst(
-                    "\"id\":\\s*\"[^\"]*\"", "\"id\": \"" + recordId + "\"");
+            return body.replaceFirst("\"id\":\\s*\"[^\"]*\"", "\"id\": \"" + recordId + "\"");
         }
     }
 }

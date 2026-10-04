@@ -64,6 +64,12 @@ public class SourcelumeDatasetDto {
     private RecordStatus recordStatus;
     private String rawJsonLd;
     private String validationIssues;
+    /** Hex SHA-256 over the received request bytes — set by the REST layer. */
+    private String sha256;
+    /** The validator chain that produced the verdict (comma-separated ids). */
+    private String validatedBy;
+    /** When the verdict was produced (ISO-8601, UTC). */
+    private String validatedAt;
 
     public SourcelumeDatasetDto() {}
 
@@ -136,6 +142,30 @@ public class SourcelumeDatasetDto {
 
     public void setRawJsonLd(String rawJsonLd) {
         this.rawJsonLd = rawJsonLd;
+    }
+
+    public String getSha256() {
+        return sha256;
+    }
+
+    public void setSha256(String sha256) {
+        this.sha256 = sha256;
+    }
+
+    public String getValidatedBy() {
+        return validatedBy;
+    }
+
+    public void setValidatedBy(String validatedBy) {
+        this.validatedBy = validatedBy;
+    }
+
+    public String getValidatedAt() {
+        return validatedAt;
+    }
+
+    public void setValidatedAt(String validatedAt) {
+        this.validatedAt = validatedAt;
     }
 
     public String getValidationIssues() {
