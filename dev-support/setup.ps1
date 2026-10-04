@@ -44,7 +44,10 @@ if (Test-Path $VendorDir) {
   $TmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
   New-Item -ItemType Directory -Path $TmpDir | Out-Null
   try {
-    git clone --depth 1 --branch $AtlasRef https://github.com/apache/atlas.git $TmpDir
+    # -c core.autocrlf=false keeps LF endings in the vendored checkout; Git for
+    # Windows' default (autocrlf=true) would produce CRLF, breaking the
+    # vendored bash scripts under Git Bash/WSL.
+    git clone -c core.autocrlf=false --depth 1 --branch $AtlasRef https://github.com/apache/atlas.git $TmpDir
     if ($LASTEXITCODE -ne 0) { throw "git clone apache/atlas failed" }
     New-Item -ItemType Directory -Path (Split-Path -Parent $VendorDir) -Force | Out-Null
     Copy-Item -Recurse (Join-Path $TmpDir "dev-support\atlas-docker") $VendorDir
