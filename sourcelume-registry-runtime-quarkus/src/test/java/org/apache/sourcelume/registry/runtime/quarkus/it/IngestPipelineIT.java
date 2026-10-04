@@ -77,7 +77,10 @@ class IngestPipelineIT {
 
         promote(recordId);
 
-        given().when()
+        // The location carries the percent-encoded record IRI; REST Assured
+        // must not re-encode it (the server route matches the encoded form).
+        given().urlEncodingEnabled(false)
+                .when()
                 .get(location.replaceFirst("^https?://[^/]+", ""))
                 .then()
                 .statusCode(200)

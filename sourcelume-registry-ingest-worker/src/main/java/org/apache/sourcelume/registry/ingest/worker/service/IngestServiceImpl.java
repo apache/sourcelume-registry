@@ -107,6 +107,10 @@ public class IngestServiceImpl implements IngestService {
         SourcelumeDatasetDto incomplete = new SourcelumeDatasetDto();
         incomplete.setQualifiedName(pending.getQualifiedName());
         incomplete.setGuid(pending.getGuid());
+        // Atlas requires a name on every entity write (mandatory on the
+        // Asset supertype), so the placeholder from the PENDING write must
+        // travel along — the verdict would otherwise be rejected.
+        incomplete.setName(pending.getName());
         incomplete.setRecordStatus(RecordStatus.INCOMPLETE);
         incomplete.setRawJsonLd(pending.getRawJsonLd());
         incomplete.setValidationIssues(toIssuesJson(validation.issues()));

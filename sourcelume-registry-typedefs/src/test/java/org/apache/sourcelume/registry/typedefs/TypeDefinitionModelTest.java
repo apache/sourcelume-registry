@@ -52,9 +52,14 @@ class TypeDefinitionModelTest {
         assertEquals(1, enumDefs.size(), "exactly one enum is expected");
         JsonNode recordStatus = enumDefs.get(0);
         assertEquals("sourcelume_record_status", recordStatus.path("name").asText());
+        // Atlas enum elements carry ordinal/value, not name — the real
+        // backend rejects name-based elements (found in the first run
+        // against Atlas).
         List<String> values = new ArrayList<>();
+        int expectedOrdinal = 0;
         for (JsonNode element : recordStatus.path("elementDefs")) {
-            values.add(element.path("name").asText());
+            assertEquals(expectedOrdinal++, element.path("ordinal").asInt());
+            values.add(element.path("value").asText());
         }
         assertEquals(List.of("PENDING", "INCOMPLETE", "ACTIVE"), values);
     }

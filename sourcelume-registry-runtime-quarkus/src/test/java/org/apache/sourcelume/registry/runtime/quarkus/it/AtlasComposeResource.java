@@ -18,9 +18,19 @@ package org.apache.sourcelume.registry.runtime.quarkus.it;
 
 import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.testcontainers.containers.ComposeContainer;
 import org.testcontainers.containers.wait.strategy.HttpWaitStrategy;
 
@@ -35,15 +45,28 @@ import org.testcontainers.containers.wait.strategy.HttpWaitStrategy;
  * {@code atlas:latest} image. When this resource runs, a missing
  * prerequisite fails loudly with an actionable message instead of being
  * skipped — the profile was requested explicitly.
+ *
+ * <p>The vendored compose files pin {@code container_name} on their
+ * services — in the main file and in the files pulled in via
+ * {@code extends} — which Testcontainers refuses to manage. Instead of
+ * forking the files, this resource derives stripped copies at runtime
+ * (same directory, so relative paths and the environment file keep
+ * working) and removes them on shutdown.
  */
 public class AtlasComposeResource implements QuarkusTestResourceLifecycleManager {
 
     /** Overrides the compose file location (e.g. for CI setups). */
     public static final String COMPOSE_FILE_PROPERTY = "sourcelume.it.atlas-compose";
 
+    /** Compose {@code extends} entries look like {@code file: <name>}. */
+    private static final Pattern EXTENDS_FILE_PATTERN = Pattern.compile("file:\\s*([\\w.\\-]+\\.ya?ml)");
+
     private static final String DEFAULT_COMPOSE_FILE = "../dev-support/vendor/atlas-docker/docker-compose.atlas.yml";
 
+    private static final String DERIVED_SUFFIX = ".sourcelume-it.yml";
+
     private ComposeContainer compose;
+    private final List<Path> derivedFiles = new ArrayList<>();
 
     @Override
     public Map<String, String> start() {
@@ -58,7 +81,7 @@ public class AtlasComposeResource implements QuarkusTestResourceLifecycleManager
                             .formatted(composeFile, COMPOSE_FILE_PROPERTY));
         }
 
-        compose = new ComposeContainer(composeFile)
+        compose = new ComposeContainer(deriveStrippedCopies(composeFile))
                 .withLocalCompose(true)
                 // atlas:latest is built locally by the dev-support flow;
                 // pulling would fail (the image is not on any registry).
@@ -93,10 +116,80 @@ public class AtlasComposeResource implements QuarkusTestResourceLifecycleManager
         if (compose != null) {
             compose.stop();
         }
+        for (Path derived : derivedFiles) {
+            try {
+                Files.deleteIfExists(derived);
+            } catch (IOException e) {
+                // best effort cleanup of derived, gitignored helper files
+            }
+        }
     }
 
     private static File composeFile() {
         String configured = System.getProperty(COMPOSE_FILE_PROPERTY);
         return new File(configured != null ? configured : DEFAULT_COMPOSE_FILE);
+    }
+
+    /**
+     * Derives Testcontainers-manageable copies of the compose file and of
+     * every file it pulls in via {@code extends}: without the
+     * {@code container_name} lines and with the cross-references rewritten
+     * to the derived names. The copies live next to the originals so that
+     * relative volume paths and the {@code .env} file keep working.
+     */
+    private File deriveStrippedCopies(File composeFile) {
+        try {
+            Path dir = composeFile.toPath().getParent();
+
+            // strip the extends-referenced files first, rewriting their
+            // names in the main file afterwards
+            String main = stripContainerNames(composeFile.toPath());
+            Set<String> referenced = findExtendsFileReferences(main);
+            for (String reference : referenced) {
+                Path referencedFile = dir.resolve(reference);
+                if (!referencedFile.toFile().isFile()) {
+                    throw new IllegalStateException(
+                            "Compose file references " + reference + ", but it does not exist next to " + composeFile);
+                }
+                Path derived = derivedName(referencedFile);
+                String stripped = stripContainerNames(referencedFile);
+                Files.writeString(derived, stripped + "\n", StandardCharsets.UTF_8);
+                derivedFiles.add(derived);
+                main = main.replace(reference, derived.getFileName().toString());
+            }
+
+            Path derivedMain = derivedName(composeFile.toPath());
+            Files.writeString(derivedMain, main + "\n", StandardCharsets.UTF_8);
+            derivedFiles.add(derivedMain);
+            return derivedMain.toFile();
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "Failed to derive a Testcontainers-manageable copy of " + composeFile + ": " + e.getMessage(), e);
+        }
+    }
+
+    private static String stripContainerNames(Path file) throws IOException {
+        return Files.readString(file, StandardCharsets.UTF_8)
+                .lines()
+                .filter(line -> !line.trim().startsWith("container_name:"))
+                .reduce((l1, l2) -> l1 + "\n" + l2)
+                .orElse("");
+    }
+
+    /** Compose {@code extends} entries look like {@code file: <name>}. */
+    private static Set<String> findExtendsFileReferences(String composeContent) {
+        Set<String> references = new HashSet<>();
+        Matcher matcher = EXTENDS_FILE_PATTERN.matcher(composeContent);
+        while (matcher.find()) {
+            references.add(matcher.group(1));
+        }
+        return references;
+    }
+
+    /** {@code docker-compose.atlas.yml} -> {@code docker-compose.atlas.sourcelume-it.yml}. */
+    private static Path derivedName(Path file) {
+        String name = file.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        return file.getParent().resolve(name.substring(0, dot) + DERIVED_SUFFIX + name.substring(dot));
     }
 }
