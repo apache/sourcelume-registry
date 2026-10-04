@@ -127,7 +127,10 @@
       <scope>test</scope>
     </dependency>
     <!-- Testcontainers for the Atlas integration tests (*IT, profile
-             integration-tests): starts the vendored Atlas compose stack. -->
+             integration-tests): starts the vendored Atlas compose stack.
+             The version is pinned deliberately: the Quarkus BOM does not
+             manage Testcontainers, and the compose support must not drift
+             between builds. -->
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>testcontainers</artifactId>

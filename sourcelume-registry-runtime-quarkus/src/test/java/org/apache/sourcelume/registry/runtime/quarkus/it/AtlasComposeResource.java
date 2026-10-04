@@ -131,32 +131,18 @@ public class AtlasComposeResource implements QuarkusTestResourceLifecycleManager
     }
 
     /**
-     * Derives Testcontainers-manageable copies of the compose file and of
-     * every file it pulls in via {@code extends}: without the
-     * {@code container_name} lines and with the cross-references rewritten
-     * to the derived names. The copies live next to the originals so that
-     * relative volume paths and the {@code .env} file keep working.
+     * Derives Testcontainers-manageable copies of the compose file and —
+     * transitively — of every file it pulls in via {@code extends} (the
+     * vendored stack nests them: the main file extends the backend file,
+     * which extends the common file): without the {@code container_name}
+     * lines and with the cross-references rewritten to the derived names.
+     * The copies live next to the originals so that relative volume paths
+     * and the {@code .env} file keep working.
      */
     private File deriveStrippedCopies(File composeFile) {
         try {
-            Path dir = composeFile.toPath().getParent();
-
-            // strip the extends-referenced files first, rewriting their
-            // names in the main file afterwards
             String main = stripContainerNames(composeFile.toPath());
-            Set<String> referenced = findExtendsFileReferences(main);
-            for (String reference : referenced) {
-                Path referencedFile = dir.resolve(reference);
-                if (!referencedFile.toFile().isFile()) {
-                    throw new IllegalStateException(
-                            "Compose file references " + reference + ", but it does not exist next to " + composeFile);
-                }
-                Path derived = derivedName(referencedFile);
-                String stripped = stripContainerNames(referencedFile);
-                Files.writeString(derived, stripped + "\n", StandardCharsets.UTF_8);
-                derivedFiles.add(derived);
-                main = main.replace(reference, derived.getFileName().toString());
-            }
+            main = deriveReferencedFiles(main, composeFile.toPath().getParent(), composeFile);
 
             Path derivedMain = derivedName(composeFile.toPath());
             Files.writeString(derivedMain, main + "\n", StandardCharsets.UTF_8);
@@ -166,6 +152,28 @@ public class AtlasComposeResource implements QuarkusTestResourceLifecycleManager
             throw new IllegalStateException(
                     "Failed to derive a Testcontainers-manageable copy of " + composeFile + ": " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Derives stripped copies for every {@code extends} file reference in
+     * the given content, rewrites the references to the derived names, and
+     * recurses into the derived copies' own references.
+     */
+    private String deriveReferencedFiles(String content, Path dir, File origin) throws IOException {
+        for (String reference : findExtendsFileReferences(content)) {
+            Path referencedFile = dir.resolve(reference);
+            if (!referencedFile.toFile().isFile()) {
+                throw new IllegalStateException(
+                        "Compose file references " + reference + ", but it does not exist next to " + origin);
+            }
+            Path derived = derivedName(referencedFile);
+            String stripped = stripContainerNames(referencedFile);
+            stripped = deriveReferencedFiles(stripped, dir, origin);
+            Files.writeString(derived, stripped + "\n", StandardCharsets.UTF_8);
+            derivedFiles.add(derived);
+            content = content.replace(reference, derived.getFileName().toString());
+        }
+        return content;
     }
 
     private static String stripContainerNames(Path file) throws IOException {

@@ -132,8 +132,10 @@ public class RestAtlasAdapter implements AtlasAdapter {
                 return new TypeDefinitionModel(
                         typeDefs.getSourceResource(), resp.body().getBytes(StandardCharsets.UTF_8), count);
             }
-            // Atlas returns 409/conflict when a typedef already exists — fall back to PUT (update).
-            if (resp.statusCode() == 409 || resp.statusCode() == 400) {
+            // Atlas returns 409/conflict when a typedef already exists — fall back to PUT
+            // (update). A 400 is a genuinely malformed request: retrying it as an
+            // update would only mask the original error with the PUT's response.
+            if (resp.statusCode() == 409) {
                 log.warn("create typedefs failed ({}). Attempting PUT (update)...", resp.statusCode());
                 HttpResponse<String> putResp = sendJson("PUT", "/api/atlas/v2/types/typedefs", body);
                 if (putResp.statusCode() == 200 || putResp.statusCode() == 204) {

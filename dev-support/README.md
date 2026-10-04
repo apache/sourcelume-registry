@@ -218,9 +218,10 @@ curl -u admin:atlasR0cks! -X POST http://localhost:21000/api/atlas/v2/entity/bul
     }]
   }'
 
-# Fetch the created entity by qualifiedName
+# Fetch the created entity by qualified name (the bulk endpoint only
+# resolves guids; the lookup goes through the unique-attribute endpoint)
 curl -s -u admin:atlasR0cks! \
-  "http://localhost:21000/api/atlas/v2/entity/bulk?typeName=sourcelume_dataset&attr:qualifiedName=sourcelume://datasets/sample-1" | jq .
+  "http://localhost:21000/api/atlas/v2/entity/uniqueAttribute/type/sourcelume_dataset?attr:qualifiedName=sourcelume://datasets/sample-1" | jq .
 ```
 
 #### 4. Automated tests
