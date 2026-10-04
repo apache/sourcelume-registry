@@ -53,7 +53,7 @@ public class IngestServiceImpl implements IngestService {
     private final ObjectMapper objectMapper;
 
     @Inject
-    IngestServiceImpl(ValidatorChain validatorChain, AtlasAdapter atlasAdapter, ObjectMapper objectMapper) {
+    public IngestServiceImpl(ValidatorChain validatorChain, AtlasAdapter atlasAdapter, ObjectMapper objectMapper) {
         this.validatorChain = validatorChain;
         this.atlasAdapter = atlasAdapter;
         this.objectMapper = objectMapper;

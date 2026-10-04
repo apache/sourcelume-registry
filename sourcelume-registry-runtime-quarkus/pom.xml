@@ -126,6 +126,23 @@
       <artifactId>rest-assured</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Testcontainers for the Atlas integration tests (*IT, profile
+             integration-tests): starts the vendored Atlas compose stack. -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers</artifactId>
+      <version>1.21.3</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- The ingest worker module carries the promotion implementation
+             (IngestService); the integration test drives it inline against
+             the same Atlas the REST resource writes to. -->
+    <dependency>
+      <groupId>org.apache.sourcelume</groupId>
+      <artifactId>sourcelume-registry-ingest-worker</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -156,5 +173,37 @@
       </plugin>
     </plugins>
   </build>
+
+  <!-- End-to-end pipeline tests against a real Apache Atlas backend
+         (*IT classes). Off by default: run with
+         mvn verify -Pintegration-tests
+         Prerequisites: dev-support vendor + locally built atlas image —
+         see dev-support/README.md and AtlasComposeResource. -->
+  <profiles>
+    <profile>
+      <id>integration-tests</id>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <version>3.5.6</version>
+            <configuration>
+              <systemPropertyVariables>
+                <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+              </systemPropertyVariables>
+            </configuration>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>integration-test</goal>
+                  <goal>verify</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 
 </project>
