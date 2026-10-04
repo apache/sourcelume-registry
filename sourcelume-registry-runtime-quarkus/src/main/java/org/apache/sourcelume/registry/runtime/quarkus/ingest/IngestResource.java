@@ -130,9 +130,9 @@ public class IngestResource {
     }
 
     /**
-     * Atlas' Asset supertype requires a name on every entity, so the
-     * PENDING write carries a placeholder derived from the record id;
-     * the promotion overwrites it with the mapped name.
+     * Atlas' Asset supertype requires a name on every entity write: an
+     * INCOMPLETE verdict keeps the placeholder derived from the record
+     * id, a VALIDATED verdict overwrites it with the mapped name.
      */
     private static String placeholderName(String recordId) {
         int lastSegment = recordId.lastIndexOf('/');
@@ -210,7 +210,10 @@ public class IngestResource {
             String name,
             String licenseId,
             String sourceUri,
-            String validationIssues) {
+            String validationIssues,
+            String sha256,
+            String validatedBy,
+            String validatedAt) {
 
         static RecordResponse of(SourcelumeDatasetDto dataset) {
             String issues = dataset.getValidationIssues();
@@ -223,7 +226,10 @@ public class IngestResource {
                     dataset.getName(),
                     dataset.getLicenseId(),
                     dataset.getSourceUri(),
-                    issues);
+                    issues,
+                    dataset.getSha256(),
+                    dataset.getValidatedBy(),
+                    dataset.getValidatedAt());
         }
     }
 

@@ -120,6 +120,23 @@ class IngestServiceImplTest {
     }
 
     @Test
+    void stampsTheVerdictTimestampFromTheInjectedClock() {
+        java.time.Clock fixed =
+                java.time.Clock.fixed(java.time.Instant.parse("2026-10-04T12:00:00Z"), java.time.ZoneOffset.UTC);
+        IngestServiceImpl clocked =
+                new IngestServiceImpl(ValidatorChain.discover(), adapter, new ObjectMapper(), fixed);
+        SourcelumeDatasetDto submitted =
+                submitted("https://sourcelume.apache.org/records/minimal-example", validRecord);
+
+        IngestResult result = clocked.process(submitted);
+
+        assertEquals(
+                "2026-10-04T12:00:00Z",
+                result.validatedAt(),
+                "the timestamp comes from the injected clock, not the wall clock");
+    }
+
+    @Test
     void guidTravelsWithTheVerdict() {
         SourcelumeDatasetDto submitted =
                 submitted("https://sourcelume.apache.org/records/minimal-example", validRecord);

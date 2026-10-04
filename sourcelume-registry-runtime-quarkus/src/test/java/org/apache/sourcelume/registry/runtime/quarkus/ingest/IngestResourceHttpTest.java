@@ -26,8 +26,8 @@ import org.junit.jupiter.api.Test;
  * Container-level smoke test for the ingest endpoints: the two failure
  * paths that are decided before any Atlas round-trip — unsupported
  * content type (415, container-enforced via @Consumes) and a body
- * without a usable record id (400). The lifecycle semantics (202,
- * 409 on resubmission, resubmitting INCOMPLETE records, status views)
+ * without a usable record id (400). The lifecycle semantics (201/200
+ * verdicts, 409 on duplicates, resubmitting INCOMPLETE records, status views)
  * are covered by {@link IngestResourceTest}; the test profile has no
  * Atlas backend, so success paths would fail on the unreachable
  * backend here.

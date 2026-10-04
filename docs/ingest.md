@@ -59,7 +59,8 @@ Every verdict carries its context: `sha256` over the received request
 bytes (the endpoint hashes the body before decoding — "byte for byte"
 for real), `validatedBy` (the validator chain, comma-separated ids),
 and `validatedAt` (ISO-8601 UTC). Without them a stored verdict loses
-its meaning as the spec and the chain evolve.
+its meaning as the spec and the chain evolve. The POST answer and the
+GET status view both report the context.
 
 ## REST semantics
 
@@ -68,7 +69,8 @@ its meaning as the spec and the chain evolve.
 | `POST /records` (JSON-LD body) | `201` new record, `200` resubmission — body: `qualifiedName`, `recordStatus`, `sha256`, `validatedBy`, `validatedAt`, and for `INCOMPLETE` the `validationIssues` |
 | `POST /records` for an id that is already VALIDATED | `409` |
 | `POST /records` without a usable `@id`, or unparseable | `400` |
-| `GET /records/{id}` | `200` record view (issues for INCOMPLETE) / `404` |
+| `POST /records` with an unsupported content type | `415` |
+| `GET /records/{id}` | `200` record view (issues and verdict context for INCOMPLETE) / `404` |
 
 The `id` of the JSON-LD document doubles as the record's qualified name;
 the `Location` header of the answers points at the (URL-encoded)
