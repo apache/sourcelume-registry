@@ -48,7 +48,10 @@ else
   TMP_DIR="$(mktemp -d)"
   trap 'rm -rf "${TMP_DIR}"' EXIT
 
-  git clone --depth 1 --branch "${ATLAS_REF}" https://github.com/apache/atlas.git "${TMP_DIR}"
+  # -c core.autocrlf=false keeps LF endings in the vendored checkout; Git for
+  # Windows' default (autocrlf=true) would produce CRLF, breaking the
+  # vendored bash scripts under Git Bash/WSL.
+  git clone -c core.autocrlf=false --depth 1 --branch "${ATLAS_REF}" https://github.com/apache/atlas.git "${TMP_DIR}"
   mkdir -p "$(dirname "${VENDOR_DIR}")"
   cp -r "${TMP_DIR}/dev-support/atlas-docker" "${VENDOR_DIR}"
 

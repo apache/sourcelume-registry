@@ -30,6 +30,66 @@ The local development environment consists of:
 
 ---
 
+### Running on Windows
+
+The dev tooling is POSIX-shell based, but the full workflow runs on Windows
+in three ways:
+
+#### WSL2 (recommended)
+
+Install Docker Desktop with the WSL2 backend and a WSL2 distro
+(`wsl --install`), then clone and run everything inside WSL2 exactly as the
+bash instructions below describe. Docker Desktop exposes the same engine to
+WSL2, so `docker compose` and the `sourcelume-network` bridge are shared
+with Windows. Two caveats:
+
+- Clone the repo inside the WSL2 filesystem (`~/...`), not under `/mnt/c` —
+  bind-mounts and Maven disk access are much faster on the ext4 filesystem.
+- `~/.m2` inside WSL2 is a different directory than your Windows Maven
+  cache; the in-container Atlas build warms its own copy there.
+
+#### Git Bash
+
+Git for Windows ships a POSIX shell; `setup.sh`, `download-archives.sh`,
+and `docker compose` all work from it unchanged — Docker Desktop's CLI and
+engine are already on the `PATH`. Use `export VAR=value` exactly as written
+in the bash snippets.
+
+#### Native PowerShell
+
+Use `setup.ps1` instead of `setup.sh`:
+
+```powershell
+.\dev-support\setup.ps1
+```
+
+Then note these equivalents:
+
+- `export VAR=value` becomes `$env:VAR = "value"` — e.g.
+  `$env:DOCKER_BUILDKIT = "1"`, `$env:COMPOSE_DOCKER_CLI_BUILD = "1"`,
+  `$env:ATLAS_BACKEND = "postgres"`, and
+  `$env:SOURCELUME_ATLAS_URL = "http://localhost:21000"`.
+- `mkdir -p "${HOME}/.m2"` becomes `New-Item -ItemType Directory -Force ~\.m2`.
+- `download-archives.sh` still needs a POSIX shell — run it from Git Bash
+  or WSL2 (`bash download-archives.sh`), or fetch the five archives listed
+  in the vendored `.env` into `downloads/` yourself. Only the Kafka archive
+  is needed for the postgres backend.
+- `curl` in Windows PowerShell 5.1 aliases to `Invoke-WebRequest`; call
+  `curl.exe` explicitly (ships with Windows 10+) or use
+  `Invoke-RestMethod` for the same REST calls. `jq` is available via
+  `winget install jqlang.jq`.
+- The Atlas server container is always named `atlas` (compose
+  `container_name`), so attaching it to the shared network is simply:
+
+  ```powershell
+  docker network connect sourcelume-network atlas
+  ```
+
+Everything else — the `docker compose` files, `mvn` commands, and port
+numbers — is platform-independent.
+
+---
+
 ### Quick Start: Standing up the Atlas backend
 
 #### 1. Initialize dev support
@@ -79,14 +139,51 @@ curl -u admin:atlasR0cks! http://localhost:21000/api/atlas/admin/version
 
 #### 5. Connect Atlas to `sourcelume-network`
 
-Allow containerized Sourcelume services to reach Atlas by hostname (`atlas`):
+Allow containerized Sourcelume services to reach Atlas by hostname (`atlas`).
+The Atlas server container is always named `atlas` (compose
+`container_name`):
 
 ```bash
-# Locate the Atlas server container and attach it to the shared network
-ATLAS_CONTAINER=$(docker ps --filter "name=atlas" --filter "ancestor=apache/atlas" --format "{{.Names}}" | head -n 1)
-[ -z "$ATLAS_CONTAINER" ] && ATLAS_CONTAINER=$(docker ps --filter "name=atlas" --format "{{.Names}}" | grep -v "zk\|solr\|db\|kafka" | head -n 1)
-docker network connect sourcelume-network "${ATLAS_CONTAINER}" || true
+docker network connect sourcelume-network atlas || true
 ```
+
+---
+
+### Atlas images: options & trade-offs
+
+There is no official prebuilt Atlas image — `apache/atlas` on Docker Hub
+publishes no tags, and the 2.5.0 release ships a source tarball only (no
+binary distribution). Building Atlas from source
+(`docker-compose.atlas-build.yml`, ~15–45 min the first time, faster with a
+warm `~/.m2`) is therefore currently unavoidable if you want a real 2.5.0.
+The vendored stack then assembles these images:
+
+| Image | Base | Why it exists |
+|---|---|---|
+| `atlas` | `atlas-base` (Ubuntu + JDK) | The Atlas server, from the source-built dist tarball |
+| `atlas-db` | `postgres:13` | Postgres backend + init script |
+| `atlas-solr` | `solr:8` | Solr + Atlas configsets |
+| `atlas-kafka` | `atlas-base` + Kafka 2.8.2 | Broker with the Atlas Kafka hook preinstalled |
+| `atlas-zk` | `zookeeper:3.9.2` | Stock image, re-tagged |
+
+The dependency images are thin wrappers around stock images; the expensive
+parts are the Atlas source build itself and `download-archives.sh` (which
+fetches ~GBs of Hadoop/HBase/Hive/Kafka archives — only the Kafka archive
+is needed for the postgres backend).
+
+Alternatives, in order of increasing trade-off:
+
+- **Build once, share the image.** `docker save atlas:latest | gzip >
+  atlas-2.5.0.tar.gz` lets teammates `docker load` a real 2.5.0 instead of
+  rebuilding.
+- **Single-container embedded Atlas.** The distro's `atlas_start.py` can
+  run embedded HBase+Solr+Kafka in one container (the old quickstart
+  pattern). Fewer moving parts and still 2.5.0, but embedded-HBase
+  semantics differ from the postgres stack we verify against.
+- **`sburn/apache-atlas:2.3.0`.** The de facto community image — single
+  container, fast start — but Atlas 2.3.0 (not 2.5.0), amd64-only, and
+  unmaintained. Fine for a throwaway REST smoke test; not the supported
+  configuration.
 
 ---
 
