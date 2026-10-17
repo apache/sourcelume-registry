@@ -248,13 +248,13 @@ paths:
                 $ref: "#/components/schemas/DatasetErrorResponse"
   /api/v1/types/dataset:
     get:
-      summary: Get the Sourcelume typedefs
-      description: "Currently returns the full typedefs model, the same as /api/v1/types/typedefs."
+      summary: Get the dataset entity definition
       tags:
       - Types
       responses:
         "200":
-          description: The typedefs model
+          description: "The sourcelume_dataset entity definition and the enums its\
+            \ attributes use, in the typedefs format"
           content:
             application/json:
               schema:

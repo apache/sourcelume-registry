@@ -17,6 +17,8 @@
 package org.apache.sourcelume.registry.runtime.quarkus.resource;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 
 import io.quarkus.test.junit.QuarkusTest;
@@ -31,7 +33,13 @@ class TypeResourceTest {
     }
 
     @Test
-    void shouldReturnDatasetTypeDef() {
-        given().when().get("/api/v1/types/dataset").then().statusCode(200).body(containsString("sourcelume_dataset"));
+    void shouldReturnDatasetTypeDefWithItsEnums() {
+        given().when()
+                .get("/api/v1/types/dataset")
+                .then()
+                .statusCode(200)
+                .body("keySet()", containsInAnyOrder("enumDefs", "entityDefs"))
+                .body("entityDefs.name", contains("sourcelume_dataset"))
+                .body("enumDefs.name", contains("sourcelume_record_status"));
     }
 }

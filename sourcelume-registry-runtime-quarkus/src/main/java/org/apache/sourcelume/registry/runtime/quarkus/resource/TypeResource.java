@@ -16,6 +16,10 @@
  */
 package org.apache.sourcelume.registry.runtime.quarkus.resource;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -23,7 +27,11 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.Set;
+import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.core.AtlasAdapter;
 import org.apache.sourcelume.registry.core.AtlasAdapter.TypeDefinitionModel;
 import org.eclipse.microprofile.openapi.annotations.Operation;
@@ -48,10 +56,12 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 public class TypeResource {
 
     private final AtlasAdapter atlasAdapter;
+    private final ObjectMapper objectMapper;
 
     @Inject
-    public TypeResource(AtlasAdapter atlasAdapter) {
+    public TypeResource(AtlasAdapter atlasAdapter, ObjectMapper objectMapper) {
         this.atlasAdapter = atlasAdapter;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -71,20 +81,46 @@ public class TypeResource {
     }
 
     /**
-     * Returns the Sourcelume dataset entity definition model.
+     * Returns the Sourcelume dataset entity definition and the enums its attributes use.
      */
     @GET
     @Path("/dataset")
-    @Operation(
-            summary = "Get the Sourcelume typedefs",
-            description = "Currently returns the full typedefs model, the same as /api/v1/types/typedefs.")
+    @Operation(summary = "Get the dataset entity definition")
     @APIResponse(
             responseCode = "200",
-            description = "The typedefs model",
+            description = "The sourcelume_dataset entity definition and the enums its attributes use,"
+                    + " in the typedefs format",
             content = @Content(schema = @Schema(type = SchemaType.OBJECT)))
-    public Response getDatasetTypeDef() {
+    public Response getDatasetTypeDef() throws IOException {
         TypeDefinitionModel model = atlasAdapter.loadTypeDefs("models/sourcelume/sourcelume_model.json");
-        return Response.ok(new String(model.getRawJson(), StandardCharsets.UTF_8))
-                .build();
+        JsonNode typeDefs = objectMapper.readTree(model.getRawJson());
+        JsonNode datasetDef = findByName(typeDefs.path("entityDefs"), SourcelumeDatasetDto.TYPE_NAME);
+        if (datasetDef == null) {
+            throw new IllegalStateException(SourcelumeDatasetDto.TYPE_NAME + " is missing from the typedefs");
+        }
+
+        // Exact type names only: collection types (array<...>) and structDefs are not resolved
+        Set<String> attributeTypes = new HashSet<>();
+        for (JsonNode attributeDef : datasetDef.path("attributeDefs")) {
+            attributeTypes.add(attributeDef.path("typeName").asText());
+        }
+        ObjectNode datasetTypeDef = objectMapper.createObjectNode();
+        ArrayNode enumDefs = datasetTypeDef.putArray("enumDefs");
+        for (JsonNode enumDef : typeDefs.path("enumDefs")) {
+            if (attributeTypes.contains(enumDef.path("name").asText())) {
+                enumDefs.add(enumDef);
+            }
+        }
+        datasetTypeDef.putArray("entityDefs").add(datasetDef);
+        return Response.ok(datasetTypeDef).build();
+    }
+
+    private static JsonNode findByName(JsonNode defs, String name) {
+        for (JsonNode def : defs) {
+            if (name.equals(def.path("name").asText())) {
+                return def;
+            }
+        }
+        return null;
     }
 }
