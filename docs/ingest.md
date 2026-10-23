@@ -90,7 +90,7 @@ GET status view both report the context.
 | Request | Result |
 |---|---|
 | `POST /records` (JSON-LD body) | `201` new record, `200` resubmission — body: `qualifiedName`, `type`, `recordStatus`, `sha256`, `validatedBy`, `validatedAt`, and for `INCOMPLETE` the `validationIssues` |
-| `POST /records` for an id that is already VALIDATED, or taken by a plain dataset | `409` — body: `qualifiedName`, `recordStatus` (absent for a plain dataset), `entityType` (the store holding the id), `reason` |
+| `POST /records` for an id that is already VALIDATED | `409` — body: `qualifiedName`, `recordStatus`, `entityType` (the store holding the id), `reason` |
 | `POST /records` without a usable `@id`, or unparseable | `400` |
 | `POST /records` with an unsupported content type | `415` |
 | `GET /records/{id}` | `200` record view: `type`, status, the type's mapped attributes, and for INCOMPLETE the issues + verdict context / `404` |
@@ -118,6 +118,11 @@ status view.
   changes — legitimate updates (a new custody event, a corrected
   license) mean a new id linked to the previous record. The linking
   is deferred until the spec covers it; the rejection is deliberate.
+- **A record takes over an id held by a stub or a plain dataset.** An
+  INCOMPLETE stub or a plain dataset (`POST /api/v1/datasets`) holds no
+  provenance payload and no verdict, so a record submitted under that id
+  replaces it, whichever record type the record has. Only a VALIDATED
+  record keeps an id.
 - **Known limit:** the 409 check is check-then-write, and Atlas has no
   compare-and-set. Two concurrent submissions for the same id race;
   serialization comes with ownership and auth.

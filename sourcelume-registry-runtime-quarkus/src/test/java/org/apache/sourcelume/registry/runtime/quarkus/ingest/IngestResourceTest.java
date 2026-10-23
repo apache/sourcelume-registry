@@ -212,7 +212,10 @@ class IngestResourceTest {
      * out, and the 409 says why: there is no status to read the cause from.
      */
     @Test
-    void trainingRecordUnderAPlainDatasetIdIsRejectedWithItsReason() {
+    void trainingRecordReplacesAPlainDatasetOnItsId() {
+        // A plain dataset carries no provenance payload and no verdict. A
+        // provenance record already takes over its id (same store); a model
+        // record must not be locked out of the id because of the store.
         SourcelumeDatasetDto plain = new SourcelumeDatasetDto();
         plain.setQualifiedName(RECORD_ID);
         plain.setName("plain dataset");
@@ -220,15 +223,14 @@ class IngestResourceTest {
 
         var response = resource.submit(TRAINING_RECORD.getBytes(StandardCharsets.UTF_8));
 
-        assertEquals(409, response.getStatus());
-        IngestResource.ConflictResponse body = (IngestResource.ConflictResponse) response.getEntity();
-        assertEquals(RECORD_ID, body.qualifiedName());
-        assertNull(body.recordStatus(), "a plain dataset has no record status");
-        assertEquals(SourcelumeDatasetDto.TYPE_NAME, body.entityType());
-        assertTrue(body.reason().contains("plain dataset"), body.reason());
+        assertEquals(200, response.getStatus());
         assertNull(
-                fake.getRecordEntityByQualifiedName(SourcelumeModelDto.TYPE_NAME, RECORD_ID),
-                "no second record may be created under a taken id");
+                fake.getRecordEntityByQualifiedName(SourcelumeDatasetDto.TYPE_NAME, RECORD_ID),
+                "the plain dataset must not keep shadowing the record's id");
+        assertEquals(
+                RecordStatus.VALIDATED,
+                fake.getRecordEntityByQualifiedName(SourcelumeModelDto.TYPE_NAME, RECORD_ID)
+                        .getRecordStatus());
     }
 
     @Test
