@@ -26,12 +26,15 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
 import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.common.dto.SourcelumeModelDto;
 import org.apache.sourcelume.registry.core.AtlasAdapter;
+import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.core.validation.ValidatorChain;
 import org.apache.sourcelume.registry.runtime.quarkus.ingest.service.IngestServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -74,6 +77,9 @@ class IngestResourceTest {
     /** A conforming TrainingProvenanceRecord fixture, its id rewritten to this test's record id. */
     private static final String TRAINING_RECORD = trainingRecord();
 
+    private static final String MODEL_RECORD_ID = "https://sourcelume.apache.org/records/ingest-test-model";
+    private static final String UNREGISTERED_DATASET = "https://example.org/datasets/no-record";
+
     private final FakeAtlasAdapter fake = new FakeAtlasAdapter();
     private final IngestResource resource = new IngestResource(
             fake, new IngestServiceImpl(ValidatorChain.discover(), fake, new ObjectMapper()), new ObjectMapper());
@@ -81,6 +87,8 @@ class IngestResourceTest {
     @BeforeEach
     void resetStore() {
         fake.store.clear();
+        fake.lookups.clear();
+        fake.unreachable.clear();
     }
 
     @Test
@@ -294,6 +302,137 @@ class IngestResourceTest {
         assertNull(body.validationIssues(), "the cleared sentinel never surfaces");
     }
 
+    /**
+     * A VALIDATED model record reports each referenced dataset with the
+     * state its record is in: registered, or absent for an IRI the
+     * registry holds no record for.
+     */
+    @Test
+    void statusOfATrainingRecordResolvesItsDatasets() {
+        resource.submit(VALID_RECORD.getBytes(StandardCharsets.UTF_8));
+        resource.submit(modelRecord("complete", RECORD_ID, UNREGISTERED_DATASET).getBytes(StandardCharsets.UTF_8));
+
+        IngestResource.RecordResponse body =
+                (IngestResource.RecordResponse) resource.status(MODEL_RECORD_ID).getEntity();
+
+        assertEquals(RecordStatus.VALIDATED, body.recordStatus());
+        assertEquals(
+                List.of(
+                        new IngestResource.TrainingDataResponse(
+                                RECORD_ID, "pretraining", 1000L, 0.5, RecordStatus.VALIDATED, null),
+                        new IngestResource.TrainingDataResponse(
+                                UNREGISTERED_DATASET, "pretraining", 1000L, 0.5, null, null)),
+                body.trainingData());
+    }
+
+    /** Nothing is stored on the model entity: a dataset record published later shows up on the next read. */
+    @Test
+    void trainingDataIsResolvedAtReadTime() {
+        resource.submit(modelRecord("complete", RECORD_ID).getBytes(StandardCharsets.UTF_8));
+        IngestResource.RecordResponse before =
+                (IngestResource.RecordResponse) resource.status(MODEL_RECORD_ID).getEntity();
+        assertNull(before.trainingData().get(0).recordStatus());
+
+        resource.submit(INVALID_RECORD.getBytes(StandardCharsets.UTF_8));
+
+        IngestResource.RecordResponse after =
+                (IngestResource.RecordResponse) resource.status(MODEL_RECORD_ID).getEntity();
+        assertEquals(RecordStatus.INCOMPLETE, after.trainingData().get(0).recordStatus());
+    }
+
+    /** A dataset listed in several entries (e.g. once per phase) is looked up once and reported for each. */
+    @Test
+    void aDatasetListedTwiceIsLookedUpOnce() {
+        resource.submit(VALID_RECORD.getBytes(StandardCharsets.UTF_8));
+        resource.submit(modelRecord("complete", RECORD_ID, RECORD_ID).getBytes(StandardCharsets.UTF_8));
+        fake.lookups.clear();
+
+        IngestResource.RecordResponse body =
+                (IngestResource.RecordResponse) resource.status(MODEL_RECORD_ID).getEntity();
+
+        assertEquals(2, body.trainingData().size());
+        body.trainingData().forEach(entry -> assertEquals(RecordStatus.VALIDATED, entry.recordStatus()));
+        assertEquals(1, fake.lookups.get(RECORD_ID));
+    }
+
+    /** A dataset the backend cannot be asked about marks only its own entry; the model record stays readable. */
+    @Test
+    void aFailedDatasetLookupMarksOnlyItsEntry() {
+        resource.submit(VALID_RECORD.getBytes(StandardCharsets.UTF_8));
+        resource.submit(modelRecord("complete", RECORD_ID, UNREGISTERED_DATASET).getBytes(StandardCharsets.UTF_8));
+        fake.unreachable.add(UNREGISTERED_DATASET);
+
+        var response = resource.status(MODEL_RECORD_ID);
+
+        assertEquals(200, response.getStatus());
+        List<IngestResource.TrainingDataResponse> trainingData =
+                ((IngestResource.RecordResponse) response.getEntity()).trainingData();
+        assertEquals(RecordStatus.VALIDATED, trainingData.get(0).recordStatus());
+        assertNull(trainingData.get(0).lookupFailed());
+        assertNull(trainingData.get(1).recordStatus());
+        assertEquals(Boolean.TRUE, trainingData.get(1).lookupFailed());
+    }
+
+    /** After a failed lookup the backend is not asked again: the remaining datasets are marked without waiting. */
+    @Test
+    void datasetsAfterAFailedLookupAreMarkedWithoutAsking() {
+        resource.submit(modelRecord("complete", UNREGISTERED_DATASET, RECORD_ID).getBytes(StandardCharsets.UTF_8));
+        fake.unreachable.add(UNREGISTERED_DATASET);
+        fake.lookups.clear();
+
+        List<IngestResource.TrainingDataResponse> trainingData = ((IngestResource.RecordResponse)
+                        resource.status(MODEL_RECORD_ID).getEntity())
+                .trainingData();
+
+        trainingData.forEach(entry -> assertEquals(Boolean.TRUE, entry.lookupFailed()));
+        assertNull(fake.lookups.get(RECORD_ID), "no lookup after the backend failed");
+    }
+
+    /** Only a VALIDATED model record's references are resolved; an INCOMPLETE one is not a published claim. */
+    @Test
+    void statusOfAnIncompleteTrainingRecordHasNoTrainingData() {
+        resource.submit(modelRecord("not-a-disclosure", RECORD_ID).getBytes(StandardCharsets.UTF_8));
+
+        IngestResource.RecordResponse body =
+                (IngestResource.RecordResponse) resource.status(MODEL_RECORD_ID).getEntity();
+
+        assertEquals(RecordStatus.INCOMPLETE, body.recordStatus());
+        assertNull(body.trainingData());
+    }
+
+    @Test
+    void statusOfAnUndisclosedTrainingRecordHasNoTrainingData() {
+        resource.submit(modelRecord("undisclosed").getBytes(StandardCharsets.UTF_8));
+
+        IngestResource.RecordResponse body =
+                (IngestResource.RecordResponse) resource.status(MODEL_RECORD_ID).getEntity();
+
+        assertEquals(RecordStatus.VALIDATED, body.recordStatus());
+        assertNull(body.trainingData());
+    }
+
+    /** A TrainingProvenanceRecord under {@link #MODEL_RECORD_ID}; no datasets means no trainingData list. */
+    private static String modelRecord(String disclosure, String... datasets) {
+        String trainingData = datasets.length == 0
+                ? ""
+                : Arrays.stream(datasets)
+                        .map(dataset -> "{ \"dataset\": \"" + dataset
+                                + "\", \"phase\": \"pretraining\", \"tokens\": 1000, \"share\": 0.5 }")
+                        .collect(Collectors.joining(", ", ", \"trainingData\": [", "]"));
+        return """
+                {
+                  "@context": "https://sourcelume.apache.org/context/0.0.1/sourcelume.jsonld",
+                  "id": "%s",
+                  "type": "TrainingProvenanceRecord",
+                  "identifier": "https://example.org/models/ingest-test",
+                  "name": "Ingest endpoint test model",
+                  "creator": [ { "type": "schema:Organization", "name": "Example Organization" } ],
+                  "created": "2026-10-24T00:00:00Z",
+                  "disclosure": "%s"%s
+                }"""
+                .formatted(MODEL_RECORD_ID, disclosure, trainingData);
+    }
+
     private SourcelumeDatasetDto storedDataset() {
         return (SourcelumeDatasetDto) fake.getRecordEntityByQualifiedName(SourcelumeDatasetDto.TYPE_NAME, RECORD_ID);
     }
@@ -319,6 +458,11 @@ class IngestResourceTest {
 
         final java.util.Map<StoreKey, RecordEntityDto> store = new java.util.HashMap<>();
 
+        /** Lookups by qualified name, and the names whose lookup fails as if Atlas were down. */
+        final java.util.Map<String, Integer> lookups = new java.util.HashMap<>();
+
+        final java.util.Set<String> unreachable = new java.util.HashSet<>();
+
         @Override
         public boolean isServerReady() {
             return true;
@@ -342,6 +486,10 @@ class IngestResourceTest {
 
         @Override
         public RecordEntityDto getRecordEntityByQualifiedName(String entityType, String qualifiedName) {
+            lookups.merge(qualifiedName, 1, Integer::sum);
+            if (unreachable.contains(qualifiedName)) {
+                throw new AtlasAdapterException("Atlas unreachable", 503, null);
+            }
             return store.get(new StoreKey(entityType, qualifiedName));
         }
 

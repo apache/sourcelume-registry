@@ -32,14 +32,19 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
 import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.common.dto.RecordType;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.common.dto.SourcelumeModelDto;
+import org.apache.sourcelume.registry.common.dto.TrainingProvenanceRecordDto.TrainingDataEntryDto;
 import org.apache.sourcelume.registry.common.mapper.RecordJson;
+import org.apache.sourcelume.registry.common.mapper.TrainingProvenanceRecordMapper;
 import org.apache.sourcelume.registry.core.AtlasAdapter;
+import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.core.ingest.IngestResult;
 import org.apache.sourcelume.registry.core.ingest.IngestService;
 import org.apache.sourcelume.registry.core.validation.ValidationResult;
@@ -52,6 +57,8 @@ import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Ingest endpoints. {@code POST /records} validates a submitted record
@@ -73,6 +80,8 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 @Path("/records")
 @Tag(name = "Records", description = "Submit provenance records and read their verdicts")
 public class IngestResource {
+
+    private static final Logger log = LoggerFactory.getLogger(IngestResource.class);
 
     private final AtlasAdapter atlasAdapter;
     private final IngestService ingestService;
@@ -209,7 +218,10 @@ public class IngestResource {
     @GET
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(summary = "Get a record's stored state and verdict")
+    @Operation(
+            summary = "Get a record's stored state and verdict",
+            description = "For a VALIDATED TrainingProvenanceRecord, each trainingData entry also reports the"
+                    + " current status of the referenced dataset record, looked up at read time.")
     @APIResponse(
             responseCode = "200",
             description = "The stored record",
@@ -230,7 +242,71 @@ public class IngestResource {
                     .entity(new ErrorResponse("No record for id: " + id))
                     .build();
         }
-        return Response.ok(RecordResponse.of(stored)).build();
+        List<TrainingDataResponse> trainingData = null;
+        if (stored instanceof SourcelumeModelDto
+                && stored.getRecordStatus() == RecordStatus.VALIDATED
+                && stored.getRawJsonLd() != null) {
+            trainingData = resolveTrainingData(stored.getRawJsonLd());
+        }
+        return Response.ok(RecordResponse.of(stored, trainingData)).build();
+    }
+
+    /**
+     * Resolves a model record's {@code trainingData} references at read
+     * time, as the spec asks: each referenced dataset gets the state the
+     * registry holds its record in now. Nothing about it is stored on
+     * the model entity, so a dataset record published or corrected later
+     * shows up on the next read. Null when the record lists no datasets
+     * (an {@code undisclosed} claim).
+     *
+     * <p>One lookup per distinct dataset, made one after another: the
+     * read costs grow with the number of datasets the record lists. A
+     * failed lookup marks its entries instead of failing the read, and
+     * the datasets after it are marked without asking the backend: a
+     * backend that just timed out would make every further lookup wait
+     * out its own timeout.
+     */
+    private List<TrainingDataResponse> resolveTrainingData(String rawJsonLd) {
+        List<TrainingDataEntryDto> entries =
+                TrainingProvenanceRecordMapper.map(rawJsonLd).getTrainingData();
+        if (entries == null) {
+            return null;
+        }
+        // A dataset may be listed once per training phase; look it up once.
+        Map<String, DatasetState> stateByDataset = new HashMap<>();
+        List<TrainingDataResponse> resolved = new ArrayList<>();
+        boolean backendFailed = false;
+        for (TrainingDataEntryDto entry : entries) {
+            DatasetState state = stateByDataset.get(entry.getDataset());
+            if (state == null) {
+                state = backendFailed ? DatasetState.FAILED : lookUpDataset(entry.getDataset());
+                backendFailed |= state.lookupFailed();
+                stateByDataset.put(entry.getDataset(), state);
+            }
+            resolved.add(new TrainingDataResponse(
+                    entry.getDataset(),
+                    entry.getPhase(),
+                    entry.getTokens(),
+                    entry.getShare(),
+                    state.recordStatus(),
+                    state.lookupFailed() ? Boolean.TRUE : null));
+        }
+        return resolved;
+    }
+
+    private DatasetState lookUpDataset(String dataset) {
+        try {
+            RecordEntityDto record =
+                    atlasAdapter.getRecordEntityByQualifiedName(SourcelumeDatasetDto.TYPE_NAME, dataset);
+            return new DatasetState(record == null ? null : record.getRecordStatus(), false);
+        } catch (AtlasAdapterException e) {
+            log.warn("Could not resolve training dataset '{}': {}", dataset, e.getMessage());
+            return DatasetState.FAILED;
+        }
+    }
+
+    private record DatasetState(RecordStatus recordStatus, boolean lookupFailed) {
+        static final DatasetState FAILED = new DatasetState(null, true);
     }
 
     /**
@@ -336,12 +412,13 @@ public class IngestResource {
             String modelUri,
             String modelVersion,
             String disclosure,
+            List<TrainingDataResponse> trainingData,
             String validationIssues,
             String sha256,
             String validatedBy,
             String validatedAt) {
 
-        static RecordResponse of(RecordEntityDto record) {
+        static RecordResponse of(RecordEntityDto record, List<TrainingDataResponse> trainingData) {
             String issues = record.getValidationIssues();
             if (RecordEntityDto.CLEARED_VALIDATION_ISSUES.equals(issues)) {
                 issues = null;
@@ -372,12 +449,26 @@ public class IngestResource {
                     modelUri,
                     modelVersion,
                     disclosure,
+                    trainingData,
                     issues,
                     record.getSha256(),
                     record.getValidatedBy(),
                     record.getValidatedAt());
         }
     }
+
+    /**
+     * Wire DTO for one {@code trainingData} entry of a model record: the
+     * producer's claim as submitted, plus the referenced dataset record's
+     * current state. {@code recordStatus} is absent when the registry
+     * holds no provenance record for the IRI — the spec allows any
+     * dataset IRI there, not only registered records — and
+     * {@code lookupFailed} is true instead when the backend could not be
+     * asked.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record TrainingDataResponse(
+            String dataset, String phase, Long tokens, Double share, RecordStatus recordStatus, Boolean lookupFailed) {}
 
     /** Wire DTO for error responses. */
     public record ErrorResponse(String message) {}

@@ -40,6 +40,12 @@ datasets a model was trained on; its `trainingData` list references
 dataset records by IRI. Per the spec design those referenced records are
 resolved when the model record is *read* — nothing about them is stored
 on the model entity — and the dataset records themselves stay untouched.
+`GET /records/{id}` on a VALIDATED model record lists each `trainingData`
+entry with the referenced dataset record's current `recordStatus`, absent
+when the registry holds no record for that IRI (`lookupFailed: true`
+instead when the backend could not be asked). Each distinct dataset is
+one backend lookup, so the read gets slower the more datasets a record
+lists.
 
 A submission whose `type` is absent or unknown still gets its verdict:
 it fails validation (there is no schema for it) and lands as
@@ -93,7 +99,7 @@ GET status view both report the context.
 | `POST /records` for an id that is already VALIDATED, or taken by a plain dataset | `409` — body: `qualifiedName`, `recordStatus` (absent for a plain dataset), `entityType` (the store holding the id), `reason` |
 | `POST /records` without a usable `@id`, or unparseable | `400` |
 | `POST /records` with an unsupported content type | `415` |
-| `GET /records/{id}` | `200` record view: `type`, status, the type's mapped attributes, and for INCOMPLETE the issues + verdict context / `404` |
+| `GET /records/{id}` | `200` record view: `type`, status, the type's mapped attributes, `trainingData` with each dataset's status for a VALIDATED model record, and for INCOMPLETE the issues + verdict context / `404` |
 
 The `id` of the JSON-LD document doubles as the record's qualified name;
 the `Location` header of the answers points at the (URL-encoded)
