@@ -154,11 +154,11 @@ public class IngestResource {
 
         // But the id names one record whichever store it landed in, so
         // the guard looks in every record store: VALIDATED under any
-        // type blocks the submission. An entity under a different type
-        // is either a replaceable INCOMPLETE stub — it carries no
-        // provenance payload, only its failure report, and a stale stub
-        // would keep answering GET /records/{id} over the new entity —
-        // or a conflict this write cannot merge into.
+        // type blocks the submission. Any other entity under a different
+        // type is replaceable: an INCOMPLETE stub carries no provenance
+        // payload, only its failure report, and a plain dataset carries
+        // no verdict at all — and a stale one would keep answering
+        // GET /records/{id} over the new entity.
         List<RecordEntityDto> stored =
                 atlasAdapter.getRecordEntitiesByQualifiedName(RecordType.entityTypeNames(), recordId);
         RecordEntityDto existing = null;
@@ -169,10 +169,8 @@ public class IngestResource {
             }
             if (entityType.equals(entity.getTypeName())) {
                 existing = entity;
-            } else if (entity.getRecordStatus() == RecordStatus.INCOMPLETE) {
-                replaceableStubs.add(entity);
             } else {
-                return conflict(recordId, entity);
+                replaceableStubs.add(entity);
             }
         }
         for (RecordEntityDto stub : replaceableStubs) {
@@ -301,21 +299,18 @@ public class IngestResource {
         }
     }
 
-    /** The 409 for an id that an existing entity keeps this submission from taking. */
+    /** The 409 for an id that belongs to a VALIDATED record, which never changes. */
     private static Response conflict(String recordId, RecordEntityDto blocking) {
-        String reason = blocking.getRecordStatus() == RecordStatus.VALIDATED
-                ? "The id belongs to a VALIDATED record, which never changes; publish a changed record under a new id"
-                : "The id is taken by a plain dataset entity that is not a provenance record; "
-                        + "POST /records cannot replace it under another record type";
+        String reason = "The id belongs to a VALIDATED record, which never changes; "
+                + "publish a changed record under a new id";
         return Response.status(409)
                 .entity(new ConflictResponse(recordId, blocking.getRecordStatus(), blocking.getTypeName(), reason))
                 .build();
     }
 
     /**
-     * Wire DTO for the 409 response: what is in the way — its state (absent
-     * for a plain dataset that carries no record status) and the store
-     * (entity type) it lives in — and why that blocks the submission.
+     * Wire DTO for the 409 response: the VALIDATED record that is in the way,
+     * the store (entity type) it lives in, and why that blocks the submission.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ConflictResponse(String qualifiedName, RecordStatus recordStatus, String entityType, String reason) {}
