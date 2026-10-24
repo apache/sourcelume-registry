@@ -39,10 +39,16 @@ jobs:
         with:
           path: registry
 
+      # Pinned so a spec change cannot turn this repository's build red on its
+      # own: the validators and docs/openapi.yaml embed the spec's schemas. To
+      # pick up a newer spec, change the revision here in a pull request - its
+      # CI run and the regenerated docs/openapi.yaml then show the effect.
+      # b5ab8e7: "Add TrainingProvenanceRecord" (sourcelume-spec #10).
       - name: Checkout spec
         uses: actions/checkout@v4
         with:
           repository: apache/sourcelume-spec
+          ref: b5ab8e7b36ed84c43c19e7e1b4ae816bee53427c
           path: spec
 
       - name: Set up JDK 21

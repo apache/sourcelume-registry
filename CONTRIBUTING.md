@@ -104,6 +104,13 @@ git fetch upstream
 Place `sourcelume-spec` wherever is convenient; installing it to your local
 Maven repository is what makes it available to the registry build.
 
+CI builds the spec revision pinned in `.github/workflows/ci.yml`, not the
+spec's `main`. If `OpenApiDocumentTest` fails locally but not in CI, your
+installed spec differs from the pinned one: check that revision out and
+`mvn install` it again. To move to a newer spec, change the pin in a pull
+request and regenerate `docs/openapi.yaml`
+(`-Dopenapi.snapshot.update=true`).
+
 The repository layout and runtime commands are described in the
 [README](README.md). Instructions for running Apache Atlas locally and for
 exercising the Quarkus runtime are in the
