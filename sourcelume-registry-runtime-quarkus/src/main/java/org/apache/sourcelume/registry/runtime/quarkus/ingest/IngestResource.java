@@ -30,9 +30,6 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
 import java.net.URLEncoder;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -53,6 +50,7 @@ import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.core.ingest.IngestResult;
 import org.apache.sourcelume.registry.core.ingest.IngestService;
 import org.apache.sourcelume.registry.core.validation.ValidationResult;
+import org.apache.sourcelume.registry.runtime.quarkus.RequestBodies;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.headers.Header;
@@ -170,18 +168,9 @@ public class IngestResource {
     public Response submit(byte[] received) {
         // Decode strictly: the lenient String constructor swaps invalid
         // input for U+FFFD, which would leave the stored document
-        // disagreeing with the digest over the received bytes. JSON on
-        // the wire is UTF-8 (RFC 8259), so refuse such bodies like any
-        // other unparseable input.
-        String rawJsonLd;
-        try {
-            rawJsonLd = StandardCharsets.UTF_8
-                    .newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(received))
-                    .toString();
-        } catch (CharacterCodingException e) {
+        // disagreeing with the digest over the received bytes.
+        String rawJsonLd = RequestBodies.utf8(received);
+        if (rawJsonLd == null) {
             return Response.status(400)
                     .entity(new ErrorResponse("Request body is not valid UTF-8"))
                     .build();

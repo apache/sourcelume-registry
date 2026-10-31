@@ -264,7 +264,7 @@ class OpenApiDocumentTest {
                         hasItems("200", "201", "400", "409", "415", "502", "503"))
                 .body("paths.'/records'.post.requestBody.content", hasKey("application/ld+json"))
                 .body("paths.'/records/{id}'.get.responses.keySet()", hasItems("200", "404", "502", "503"))
-                .body("paths.'/records/validate'.post.responses.keySet()", containsInAnyOrder("200", "422"));
+                .body("paths.'/records/validate'.post.responses.keySet()", containsInAnyOrder("200", "422", "400"));
     }
 
     @Test

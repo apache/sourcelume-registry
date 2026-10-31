@@ -872,6 +872,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationResponse"
+        "400":
+          description: The request body is not valid UTF-8
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /records/{id}:
     get:
       summary: Get a record's stored state and verdict

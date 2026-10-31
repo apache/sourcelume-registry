@@ -312,14 +312,17 @@ class IngestResourceTest {
     /**
      * Bytes a strict UTF-8 decoder cannot map would otherwise be replaced
      * by U+FFFD: the stored document would stop matching the digest over
-     * the received bytes. The endpoint refuses them like any unparseable
-     * body.
+     * the received bytes. The bad bytes sit inside a string value of an
+     * otherwise valid record, where a lenient decode would still parse
+     * and store — so only the charset check refuses this body.
      */
     @Test
     void bodyThatIsNotUtf8IsRejected() {
-        var response = resource.submit(withInvalidUtf8(VALID_RECORD));
+        var response = resource.submit(recordWithInvalidUtf8InName());
 
         assertEquals(400, response.getStatus());
+        assertEquals(
+                "Request body is not valid UTF-8", ((IngestResource.ErrorResponse) response.getEntity()).message());
     }
 
     /** An invalid byte anywhere is enough, not only inside the JSON text. */
@@ -330,7 +333,11 @@ class IngestResourceTest {
         body[0] = (byte) 0xFF; // opens no UTF-8 sequence
         System.arraycopy(record, 0, body, 1, record.length);
 
-        assertEquals(400, resource.submit(body).getStatus());
+        var response = resource.submit(body);
+
+        assertEquals(400, response.getStatus());
+        assertEquals(
+                "Request body is not valid UTF-8", ((IngestResource.ErrorResponse) response.getEntity()).message());
     }
 
     /**
@@ -347,18 +354,24 @@ class IngestResourceTest {
         System.arraycopy(bom, 0, body, 0, bom.length);
         System.arraycopy(record, 0, body, bom.length, record.length);
 
-        assertEquals(400, resource.submit(body).getStatus());
+        var response = resource.submit(body);
+
+        assertEquals(400, response.getStatus());
+        assertTrue(((IngestResource.ErrorResponse) response.getEntity())
+                .message()
+                .startsWith("Record is not parseable JSON"));
     }
 
-    /** Splices one byte that opens no UTF-8 sequence (0xC0/0xC1) into the middle of an otherwise valid record. */
-    private static byte[] withInvalidUtf8(String document) {
-        int half = document.length() / 2;
-        byte[] head = document.substring(0, half).getBytes(StandardCharsets.UTF_8);
-        byte[] tail = document.substring(half).getBytes(StandardCharsets.UTF_8);
-        byte[] body = new byte[head.length + 1 + tail.length];
+    /** Two bytes that open no UTF-8 sequence (0xC0/0xC1 are overlong leads), spliced inside the "name" string value. */
+    private static byte[] recordWithInvalidUtf8InName() {
+        int inside = VALID_RECORD.indexOf("endpoint");
+        byte[] head = VALID_RECORD.substring(0, inside).getBytes(StandardCharsets.UTF_8);
+        byte[] tail = VALID_RECORD.substring(inside).getBytes(StandardCharsets.UTF_8);
+        byte[] body = new byte[head.length + 2 + tail.length];
         System.arraycopy(head, 0, body, 0, head.length);
         body[head.length] = (byte) 0xC0;
-        System.arraycopy(tail, 0, body, head.length + 1, tail.length);
+        body[head.length + 1] = (byte) 0xC1;
+        System.arraycopy(tail, 0, body, head.length + 2, tail.length);
         return body;
     }
 
