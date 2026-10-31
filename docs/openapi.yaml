@@ -808,7 +808,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/IngestResponse"
         "400":
-          description: Unparseable document or no usable id
+          description: "Not valid UTF-8, an unparseable document, or no usable id"
           content:
             application/json:
               schema:

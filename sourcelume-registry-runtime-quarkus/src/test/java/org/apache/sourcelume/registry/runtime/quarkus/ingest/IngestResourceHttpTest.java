@@ -56,6 +56,16 @@ class IngestResourceHttpTest {
     }
 
     @Test
+    void bodyThatIsNotUtf8IsRejectedOverHttp() {
+        given().contentType(ContentType.JSON)
+                .body(new byte[] {'{', '"', (byte) 0xC0, '"', '}'})
+                .when()
+                .post("/records")
+                .then()
+                .statusCode(400);
+    }
+
+    @Test
     void typeConflictPreservesTheOriginalVerdictOverHttp() {
         String id = "https://sourcelume.apache.org/records/http-type-conflict-" + UUID.randomUUID();
         String original = "{\"id\":\"" + id + "\",\"type\":\"ProvenanceRecord\"}";

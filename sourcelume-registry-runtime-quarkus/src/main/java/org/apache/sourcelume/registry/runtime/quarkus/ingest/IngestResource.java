@@ -30,6 +30,9 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
 import java.net.URLEncoder;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -77,9 +80,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Status codes: {@code 201}/{@code 200} with a Location header; a
  * record that is already VALIDATED is rejected with {@code 409}; a
- * document without a usable {@code id} is {@code 400}; an unknown record
- * on GET is {@code 404}; a failed backend call is {@code 503} or
- * {@code 502} (see {@code BackendFailureMapper}).
+ * document without a usable {@code id} or a body that is not valid
+ * UTF-8 is {@code 400}; an unknown record on GET is {@code 404}; a
+ * failed backend call is {@code 503} or {@code 502} (see
+ * {@code BackendFailureMapper}).
  */
 @Path("/records")
 @Tag(name = "Records", description = "Submit provenance records and read their verdicts")
@@ -148,7 +152,7 @@ public class IngestResource {
             content = @Content(schema = @Schema(implementation = IngestResponse.class)))
     @APIResponse(
             responseCode = "400",
-            description = "Unparseable document or no usable id",
+            description = "Not valid UTF-8, an unparseable document, or no usable id",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @APIResponse(
             responseCode = "409",
@@ -164,7 +168,24 @@ public class IngestResource {
             description = "The backend is unavailable; retry later",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public Response submit(byte[] received) {
-        String rawJsonLd = new String(received, StandardCharsets.UTF_8);
+        // Decode strictly: the lenient String constructor swaps invalid
+        // input for U+FFFD, which would leave the stored document
+        // disagreeing with the digest over the received bytes. JSON on
+        // the wire is UTF-8 (RFC 8259), so refuse such bodies like any
+        // other unparseable input.
+        String rawJsonLd;
+        try {
+            rawJsonLd = StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(received))
+                    .toString();
+        } catch (CharacterCodingException e) {
+            return Response.status(400)
+                    .entity(new ErrorResponse("Request body is not valid UTF-8"))
+                    .build();
+        }
         String recordId;
         try {
             recordId = RecordJson.extractRecordId(rawJsonLd);

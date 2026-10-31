@@ -309,6 +309,59 @@ class IngestResourceTest {
         assertEquals(400, response.getStatus());
     }
 
+    /**
+     * Bytes a strict UTF-8 decoder cannot map would otherwise be replaced
+     * by U+FFFD: the stored document would stop matching the digest over
+     * the received bytes. The endpoint refuses them like any unparseable
+     * body.
+     */
+    @Test
+    void bodyThatIsNotUtf8IsRejected() {
+        var response = resource.submit(withInvalidUtf8(VALID_RECORD));
+
+        assertEquals(400, response.getStatus());
+    }
+
+    /** An invalid byte anywhere is enough, not only inside the JSON text. */
+    @Test
+    void invalidUtf8OutsideTheJsonIsRejected() {
+        byte[] record = VALID_RECORD.getBytes(StandardCharsets.UTF_8);
+        byte[] body = new byte[record.length + 1];
+        body[0] = (byte) 0xFF; // opens no UTF-8 sequence
+        System.arraycopy(record, 0, body, 1, record.length);
+
+        assertEquals(400, resource.submit(body).getStatus());
+    }
+
+    /**
+     * A UTF-8 BOM decodes fine but is not a JSON document start (and
+     * RFC 8259 forbids senders from adding one), so the body fails the
+     * same 400 as other unparseable input — through the JSON parse, not
+     * the charset check.
+     */
+    @Test
+    void bomPrefixedBodyIsRejected() {
+        byte[] bom = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        byte[] record = VALID_RECORD.getBytes(StandardCharsets.UTF_8);
+        byte[] body = new byte[bom.length + record.length];
+        System.arraycopy(bom, 0, body, 0, bom.length);
+        System.arraycopy(record, 0, body, bom.length, record.length);
+
+        assertEquals(400, resource.submit(body).getStatus());
+    }
+
+    /** Splices one byte that opens no UTF-8 sequence (0xC0/0xC1) into the middle of an otherwise valid record. */
+    private static byte[] withInvalidUtf8(String document) {
+        int half = document.length() / 2;
+        byte[] head = document.substring(0, half).getBytes(StandardCharsets.UTF_8);
+        byte[] tail = document.substring(half).getBytes(StandardCharsets.UTF_8);
+        byte[] body = new byte[head.length + 1 + tail.length];
+        System.arraycopy(head, 0, body, 0, head.length);
+        body[head.length] = (byte) 0xC0;
+        System.arraycopy(tail, 0, body, head.length + 1, tail.length);
+        return body;
+    }
+
     @Test
     void statusOfAnUnknownRecordIs404() {
         var response = resource.status("https://sourcelume.apache.org/records/unknown");

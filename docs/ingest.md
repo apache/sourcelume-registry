@@ -115,7 +115,7 @@ An id denotes one record. Records are written only via `POST /records`; `/api/v1
 |---|---|
 | `POST /records` (JSON-LD body) | `201` new record, `200` resubmission under the same record type — body: `qualifiedName`, `type`, `recordStatus`, `sha256`, `validatedBy`, `validatedAt`, and for `INCOMPLETE` the `validationIssues` |
 | `POST /records` for an id that is already VALIDATED or stored under another entity type | `409` — the stored record is unchanged; body: `qualifiedName`, `recordStatus` (absent for a plain dataset), `entityType` (the store holding the id), `reason` |
-| `POST /records` without a usable `@id`, or unparseable | `400` |
+| `POST /records` without a usable `@id`, unparseable, or not valid UTF-8 | `400` |
 | `POST /records` with an unsupported content type | `415` |
 | `GET /records/{id}` | `200` record view: `type`, status, the type's mapped attributes, `trainingData` with each dataset's status for a VALIDATED model record, `custodyChain` with each agent's record status for a VALIDATED dataset record, and for INCOMPLETE the issues + verdict context / `404` |
 | `POST /records`, `GET /records/{id}` or a `/api/v1/datasets` view when the backend can't be reached | `503` — retry later; body: `message` (`error` on `/api/v1/datasets`, like its other errors) |
