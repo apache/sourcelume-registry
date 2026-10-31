@@ -105,7 +105,10 @@ bytes (the endpoint hashes the body before decoding — "byte for byte"
 for real), `validatedBy` (the validator chain, comma-separated ids),
 and `validatedAt` (ISO-8601 UTC). Without them a stored verdict loses
 its meaning as the spec and the chain evolve. The POST answer and the
-GET status view both report the context.
+GET status view both report the context. The document itself comes back
+unchanged from `GET /records/{id}/document` — the bytes a signature or
+the digest is checked against; nothing is mapped or reserialized on the
+way out.
 
 ## REST semantics
 
@@ -118,8 +121,9 @@ An id denotes one record. Records are written only via `POST /records`; `/api/v1
 | `POST /records` without a usable `@id`, or unparseable | `400` |
 | `POST /records` with an unsupported content type | `415` |
 | `GET /records/{id}` | `200` record view: `type`, status, the type's mapped attributes, `trainingData` with each dataset's status for a VALIDATED model record, `custodyChain` with each agent's record status for a VALIDATED dataset record, and for INCOMPLETE the issues + verdict context / `404` |
-| `POST /records`, `GET /records/{id}` or a `/api/v1/datasets` view when the backend can't be reached | `503` — retry later; body: `message` (`error` on `/api/v1/datasets`, like its other errors) |
-| `POST /records`, `GET /records/{id}` or a `/api/v1/datasets` view when the backend answers with an error | `502` — body as for `503`; the backend's answer is only logged |
+| `GET /records/{id}/document` | `200` — the stored JSON-LD document, byte-identical to the submission, as `application/ld+json`; the record's `sha256` repeats as `ETag`. For any verdict, VALIDATED or INCOMPLETE / `404` — no record for the id, or the entity under it carries no document |
+| `POST /records`, a `GET` on `/records` or a `/api/v1/datasets` view when the backend can't be reached | `503` — retry later; body: `message` (`error` on `/api/v1/datasets`, like its other errors) |
+| `POST /records`, a `GET` on `/records` or a `/api/v1/datasets` view when the backend answers with an error | `502` — body as for `503`; the backend's answer is only logged |
 
 The `id` of the JSON-LD document doubles as the record's qualified name;
 the `Location` header of the answers points at the (URL-encoded)

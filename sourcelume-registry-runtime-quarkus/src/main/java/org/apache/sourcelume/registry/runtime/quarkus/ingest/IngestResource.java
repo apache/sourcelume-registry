@@ -69,7 +69,9 @@ import org.slf4j.LoggerFactory;
  * verdict — byte-identical, keyed by the record IRI — answering with
  * {@code 201} (new record) or {@code 200} (corrected resubmission of an
  * INCOMPLETE record) and the verdict in the body. {@code GET /records/{id}}
- * reports the stored state.
+ * reports the stored state; {@code GET /records/{id}/document} returns the
+ * stored bytes verbatim, for consumers that check a signature or the
+ * record's digest over the document itself.
  *
  * <p>Every stored record carries its validation verdict: VALIDATED is
  * published (consumers filter on it), INCOMPLETE carries its issues and
@@ -269,6 +271,66 @@ public class IngestResource {
         }
         return Response.ok(RecordResponse.of(stored, trainingData, custodyChain))
                 .build();
+    }
+
+    @GET
+    @Path("/{id}/document")
+    @Produces({"application/ld+json", MediaType.APPLICATION_JSON})
+    @Operation(
+            summary = "Get the record's stored document",
+            description = "Returns the JSON-LD document byte-identical to the received request body — the same"
+                    + " bytes the record's sha256 digest (reported as ETag and on the status view) covers."
+                    + " Nothing is mapped, resolved or reserialized, so a signature or digest over the"
+                    + " submitted bytes can be checked against this answer. The document is returned for"
+                    + " records of any verdict, VALIDATED or INCOMPLETE.")
+    @APIResponse(
+            responseCode = "200",
+            description = "The stored document, as posted",
+            headers =
+                    @Header(
+                            name = "ETag",
+                            description = "The record's sha256 digest — a strong validator for the returned bytes",
+                            schema = @Schema(type = SchemaType.STRING)),
+            content =
+                    @Content(
+                            mediaType = "application/ld+json",
+                            schema = @Schema(ref = "#/components/schemas/RecordSubmission")))
+    @APIResponse(
+            responseCode = "404",
+            description = "No record for this id, or the entity under it carries no stored document",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @APIResponse(
+            responseCode = "502",
+            description = "The backend answered with an error or with data the registry could not read",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @APIResponse(
+            responseCode = "503",
+            description = "The backend is unavailable; retry later",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public Response document(
+            @Parameter(description = "The record's id (IRI); encode it when calling the API directly") @PathParam("id")
+                    String id) {
+        List<RecordEntityDto> found = atlasAdapter.getRecordEntitiesByQualifiedName(RecordType.entityTypeNames(), id);
+        RecordEntityDto stored = found.isEmpty() ? null : found.get(0);
+        if (stored == null) {
+            return Response.status(404)
+                    .type(MediaType.APPLICATION_JSON)
+                    .entity(new ErrorResponse("No record for id: " + id))
+                    .build();
+        }
+        // A plain entity under the id (no provenance submission) carries
+        // no document at all — the endpoint has nothing to return.
+        if (stored.getRawJsonLd() == null) {
+            return Response.status(404)
+                    .type(MediaType.APPLICATION_JSON)
+                    .entity(new ErrorResponse("The record carries no stored document for id: " + id))
+                    .build();
+        }
+        Response.ResponseBuilder ok = Response.ok(stored.getRawJsonLd()).type("application/ld+json");
+        if (stored.getSha256() != null) {
+            ok.tag(stored.getSha256());
+        }
+        return ok.build();
     }
 
     /**

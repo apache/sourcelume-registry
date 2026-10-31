@@ -56,6 +56,40 @@ class IngestResourceHttpTest {
     }
 
     @Test
+    void documentReturnsTheStoredBodyVerbatimOverHttp() {
+        String id = "https://sourcelume.apache.org/records/http-document-" + UUID.randomUUID();
+        String original = "{\"id\":\"" + id + "\",\"type\":\"ProvenanceRecord\"}";
+        var verdict = given().contentType(ContentType.JSON)
+                .body(original)
+                .when()
+                .post("/records")
+                .then()
+                .statusCode(201)
+                .extract()
+                .jsonPath();
+
+        given().urlEncodingEnabled(false)
+                .when()
+                .get("/records/" + URLEncoder.encode(id, StandardCharsets.UTF_8) + "/document")
+                .then()
+                .statusCode(200)
+                .contentType(containsString("application/ld+json"))
+                .header("ETag", containsString(verdict.getString("sha256")))
+                .body(equalTo(original));
+    }
+
+    @Test
+    void documentOfAnUnknownRecordIs404OverHttp() {
+        String id = "https://sourcelume.apache.org/records/http-document-unknown-" + UUID.randomUUID();
+
+        given().urlEncodingEnabled(false)
+                .when()
+                .get("/records/" + URLEncoder.encode(id, StandardCharsets.UTF_8) + "/document")
+                .then()
+                .statusCode(404);
+    }
+
+    @Test
     void typeConflictPreservesTheOriginalVerdictOverHttp() {
         String id = "https://sourcelume.apache.org/records/http-type-conflict-" + UUID.randomUUID();
         String original = "{\"id\":\"" + id + "\",\"type\":\"ProvenanceRecord\"}";
