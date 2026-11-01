@@ -317,6 +317,59 @@ class IngestResourceTest {
     }
 
     @Test
+    void documentOfAnUnknownRecordIs404() {
+        var response = resource.document("https://sourcelume.apache.org/records/unknown");
+
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    void documentReturnsTheStoredBytesVerbatim() {
+        resource.submit(VALID_RECORD.getBytes(StandardCharsets.UTF_8));
+
+        var response = resource.document(RECORD_ID);
+
+        assertEquals(200, response.getStatus());
+        assertEquals(VALID_RECORD, response.getEntity(), "the stored document comes back byte-identical");
+        assertEquals(
+                org.apache.sourcelume.registry.runtime.quarkus.ingest.service.Digests.sha256Hex(
+                        VALID_RECORD.getBytes(StandardCharsets.UTF_8)),
+                response.getEntityTag().getValue(),
+                "the ETag reports the same digest the verdict carries");
+    }
+
+    /** The stored bytes are what a submission signed — the verdict does not gate their return. */
+    @Test
+    void documentOfAnIncompleteRecordIsReturnedAsWell() {
+        resource.submit(INVALID_RECORD.getBytes(StandardCharsets.UTF_8));
+
+        var response = resource.document(RECORD_ID);
+
+        assertEquals(200, response.getStatus());
+        assertEquals(INVALID_RECORD, response.getEntity());
+    }
+
+    /** A corrected resubmission replaces the stored record — and with it the bytes this endpoint returns. */
+    @Test
+    void resubmissionReplacesTheDocument() {
+        resource.submit(INVALID_RECORD.getBytes(StandardCharsets.UTF_8));
+        resource.submit(VALID_RECORD.getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(VALID_RECORD, resource.document(RECORD_ID).getEntity());
+    }
+
+    /** A plain dataset under the id is not a provenance record: no document was ever posted for it. */
+    @Test
+    void documentOfAPlainDatasetIs404() {
+        SourcelumeDatasetDto plain = new SourcelumeDatasetDto();
+        plain.setQualifiedName(RECORD_ID);
+        plain.setName("plain dataset");
+        fake.createOrUpdateRecordEntity(plain);
+
+        assertEquals(404, resource.document(RECORD_ID).getStatus());
+    }
+
+    @Test
     void statusReturnsRecordStateAndIssues() {
         resource.submit(INVALID_RECORD.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         storedDataset().setValidationIssues("[{\"message\": \"missing license\"}]");

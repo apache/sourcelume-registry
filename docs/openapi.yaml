@@ -915,6 +915,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /records/{id}/document:
+    get:
+      summary: Get the record's stored document
+      description: "Returns the JSON-LD document byte-identical to the received request\
+        \ body — the same bytes the record's sha256 digest (reported as ETag and on\
+        \ the status view) covers. Nothing is mapped, resolved or reserialized, so\
+        \ a signature or digest over the submitted bytes can be checked against this\
+        \ answer. The document is returned for records of any verdict, VALIDATED or\
+        \ INCOMPLETE."
+      tags:
+      - Records
+      parameters:
+      - description: The record's id (IRI); encode it when calling the API directly
+        name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "The stored document, as posted"
+          headers:
+            ETag:
+              description: The record's sha256 digest — a strong validator for the
+                returned bytes
+              schema:
+                type: string
+          content:
+            application/ld+json:
+              schema:
+                $ref: "#/components/schemas/RecordSubmission"
+        "404":
+          description: "No record for this id, or the entity under it carries no stored\
+            \ document"
+          content:
+            application/ld+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: The backend answered with an error or with data the registry
+            could not read
+          content:
+            application/ld+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The backend is unavailable; retry later
+          content:
+            application/ld+json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 info:
   title: Apache Sourcelume Registry API
   version: 0.0.1-SNAPSHOT
