@@ -33,7 +33,7 @@ repo creation, and initial discussion") the codebase is organized as a
 | `sourcelume-registry-validation-jsonschema` | Validation plugin: "json-schema" stage (networknt, draft 2020-12, format assertions) |
 | `sourcelume-registry-validation-shacl` | Validation plugin: "shacl" stage (Apache Jena, offline context inlining) |
 | `sourcelume-registry-atlas-adapter` | Thin REST `AtlasAdapter` implementation over the core SPI (JDK HttpClient), used by the Quarkus REST runtime |
-| `sourcelume-registry-runtime-quarkus` | Quarkus REST runtime: dataset and type REST APIs (`/api/v1/datasets`, `/api/v1/types`), ingest endpoints (`POST /records`, `GET /records/{id}`), pre-flight validation endpoint, startup bootstrap (spec verification + typedef registration), SmallRye Health readiness, Docker packaging |
+| `sourcelume-registry-runtime-quarkus` | Quarkus REST runtime: dataset and type REST APIs (`/api/v1/datasets`, `/api/v1/types`), ingest endpoints (`POST /records`, `GET /records/{id}`, `GET /records/{id}/document`), pre-flight validation endpoint, startup bootstrap (spec verification + typedef registration), SmallRye Health readiness, Docker packaging |
 
 Runtime modules build on the framework-free core as separate modules and own
 their framework dependencies (the Quarkus BOM is imported in the runtime
