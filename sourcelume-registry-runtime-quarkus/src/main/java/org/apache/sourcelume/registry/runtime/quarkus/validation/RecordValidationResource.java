@@ -26,6 +26,8 @@ import jakarta.ws.rs.core.Response;
 import java.util.List;
 import org.apache.sourcelume.registry.core.validation.ValidationResult;
 import org.apache.sourcelume.registry.core.validation.ValidatorChain;
+import org.apache.sourcelume.registry.runtime.quarkus.RequestBodies;
+import org.apache.sourcelume.registry.runtime.quarkus.ingest.IngestResource;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.ExampleObject;
@@ -50,7 +52,10 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
  * <p>Status codes: {@code 200} for a conforming document, {@code 422} for
  * a well-formed document that fails validation. Malformed JSON (a parse
  * failure inside the chain) is also reported as a 422 validation issue —
- * callers get one consistent error contract per validator path.
+ * callers get one consistent error contract per validator path. A body
+ * that is not valid UTF-8 is {@code 400}, decoded strictly like {@code
+ * POST /records} so a record cannot pass the check and then fail on
+ * publish.
  */
 @Path("/records/validate")
 @Tag(name = "Records")
@@ -90,7 +95,17 @@ public class RecordValidationResource {
             responseCode = "422",
             description = "The record does not conform, or is not valid JSON",
             content = @Content(schema = @Schema(implementation = ValidationResponse.class)))
-    public Response validate(String jsonLd) {
+    @APIResponse(
+            responseCode = "400",
+            description = "The request body is not valid UTF-8",
+            content = @Content(schema = @Schema(implementation = IngestResource.ErrorResponse.class)))
+    public Response validate(byte[] body) {
+        String jsonLd = RequestBodies.utf8(body);
+        if (jsonLd == null) {
+            return Response.status(400)
+                    .entity(new IngestResource.ErrorResponse("Request body is not valid UTF-8"))
+                    .build();
+        }
         ValidationResult result = validatorChain.validate(jsonLd);
         // 422 Unprocessable Entity: well-formed request, semantic rejection —
         // the int literal is used because the resolved jakarta.ws.rs API

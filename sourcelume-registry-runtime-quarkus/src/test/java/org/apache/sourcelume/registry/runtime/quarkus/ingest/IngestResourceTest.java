@@ -309,6 +309,72 @@ class IngestResourceTest {
         assertEquals(400, response.getStatus());
     }
 
+    /**
+     * Bytes a strict UTF-8 decoder cannot map would otherwise be replaced
+     * by U+FFFD: the stored document would stop matching the digest over
+     * the received bytes. The bad bytes sit inside a string value of an
+     * otherwise valid record, where a lenient decode would still parse
+     * and store — so only the charset check refuses this body.
+     */
+    @Test
+    void bodyThatIsNotUtf8IsRejected() {
+        var response = resource.submit(recordWithInvalidUtf8InName());
+
+        assertEquals(400, response.getStatus());
+        assertEquals(
+                "Request body is not valid UTF-8", ((IngestResource.ErrorResponse) response.getEntity()).message());
+    }
+
+    /** An invalid byte anywhere is enough, not only inside the JSON text. */
+    @Test
+    void invalidUtf8OutsideTheJsonIsRejected() {
+        byte[] record = VALID_RECORD.getBytes(StandardCharsets.UTF_8);
+        byte[] body = new byte[record.length + 1];
+        body[0] = (byte) 0xFF; // opens no UTF-8 sequence
+        System.arraycopy(record, 0, body, 1, record.length);
+
+        var response = resource.submit(body);
+
+        assertEquals(400, response.getStatus());
+        assertEquals(
+                "Request body is not valid UTF-8", ((IngestResource.ErrorResponse) response.getEntity()).message());
+    }
+
+    /**
+     * A UTF-8 BOM decodes fine but is not a JSON document start (and
+     * RFC 8259 forbids senders from adding one), so the body fails the
+     * same 400 as other unparseable input — through the JSON parse, not
+     * the charset check.
+     */
+    @Test
+    void bomPrefixedBodyIsRejected() {
+        byte[] bom = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        byte[] record = VALID_RECORD.getBytes(StandardCharsets.UTF_8);
+        byte[] body = new byte[bom.length + record.length];
+        System.arraycopy(bom, 0, body, 0, bom.length);
+        System.arraycopy(record, 0, body, bom.length, record.length);
+
+        var response = resource.submit(body);
+
+        assertEquals(400, response.getStatus());
+        assertTrue(((IngestResource.ErrorResponse) response.getEntity())
+                .message()
+                .startsWith("Record is not parseable JSON"));
+    }
+
+    /** Two bytes that open no UTF-8 sequence (0xC0/0xC1 are overlong leads), spliced inside the "name" string value. */
+    private static byte[] recordWithInvalidUtf8InName() {
+        int inside = VALID_RECORD.indexOf("endpoint");
+        byte[] head = VALID_RECORD.substring(0, inside).getBytes(StandardCharsets.UTF_8);
+        byte[] tail = VALID_RECORD.substring(inside).getBytes(StandardCharsets.UTF_8);
+        byte[] body = new byte[head.length + 2 + tail.length];
+        System.arraycopy(head, 0, body, 0, head.length);
+        body[head.length] = (byte) 0xC0;
+        body[head.length + 1] = (byte) 0xC1;
+        System.arraycopy(tail, 0, body, head.length + 2, tail.length);
+        return body;
+    }
+
     @Test
     void statusOfAnUnknownRecordIs404() {
         var response = resource.status("https://sourcelume.apache.org/records/unknown");

@@ -50,6 +50,7 @@ import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.core.ingest.IngestResult;
 import org.apache.sourcelume.registry.core.ingest.IngestService;
 import org.apache.sourcelume.registry.core.validation.ValidationResult;
+import org.apache.sourcelume.registry.runtime.quarkus.RequestBodies;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.headers.Header;
@@ -79,9 +80,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Status codes: {@code 201}/{@code 200} with a Location header; a
  * record that is already VALIDATED is rejected with {@code 409}; a
- * document without a usable {@code id} is {@code 400}; an unknown record
- * on GET is {@code 404}; a failed backend call is {@code 503} or
- * {@code 502} (see {@code BackendFailureMapper}).
+ * document without a usable {@code id} or a body that is not valid
+ * UTF-8 is {@code 400}; an unknown record on GET is {@code 404}; a
+ * failed backend call is {@code 503} or {@code 502} (see
+ * {@code BackendFailureMapper}).
  */
 @Path("/records")
 @Tag(name = "Records", description = "Submit provenance records and read their verdicts")
@@ -150,7 +152,7 @@ public class IngestResource {
             content = @Content(schema = @Schema(implementation = IngestResponse.class)))
     @APIResponse(
             responseCode = "400",
-            description = "Unparseable document or no usable id",
+            description = "Not valid UTF-8, an unparseable document, or no usable id",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @APIResponse(
             responseCode = "409",
@@ -166,7 +168,15 @@ public class IngestResource {
             description = "The backend is unavailable; retry later",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public Response submit(byte[] received) {
-        String rawJsonLd = new String(received, StandardCharsets.UTF_8);
+        // Decode strictly: the lenient String constructor swaps invalid
+        // input for U+FFFD, which would leave the stored document
+        // disagreeing with the digest over the received bytes.
+        String rawJsonLd = RequestBodies.utf8(received);
+        if (rawJsonLd == null) {
+            return Response.status(400)
+                    .entity(new ErrorResponse("Request body is not valid UTF-8"))
+                    .build();
+        }
         String recordId;
         try {
             recordId = RecordJson.extractRecordId(rawJsonLd);
