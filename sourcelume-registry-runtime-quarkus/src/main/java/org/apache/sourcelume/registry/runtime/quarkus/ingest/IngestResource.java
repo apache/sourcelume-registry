@@ -407,10 +407,10 @@ public class IngestResource {
      * Looks up the record each IRI denotes among the given entity types,
      * as it stands now. An IRI listed more than once is looked up once.
      *
-     * <p>The distinct IRIs go in one bulk lookup: one backend search per
-     * entity type, not one request per IRI. A failed search marks every
-     * IRI in the batch instead of failing the read, and nothing further
-     * is asked of a backend that just failed.
+     * <p>The distinct IRIs are resolved together against the graph, one
+     * entity type at a time and several names per request. A failed
+     * lookup marks every IRI in that read instead of failing the read,
+     * and nothing further is asked of a backend that just failed.
      */
     private Map<String, RecordState> lookUpRecords(List<String> iris, List<String> entityTypes) {
         List<String> distinct = new ArrayList<>();

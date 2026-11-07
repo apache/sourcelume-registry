@@ -44,9 +44,9 @@ on the model entity — and the dataset records themselves stay untouched.
 entry with the referenced dataset record's current `recordStatus`, absent
 when the registry holds no record for that IRI (`lookupFailed: true`
 instead when the backend could not be asked). The distinct datasets are
-resolved in one backend search, so a record that names many datasets
-stays one round-trip. A failed search marks every dataset in that read
-and does not try again.
+resolved together against the graph, several names per request, so a
+long list does not become one call per dataset. A failed lookup marks
+every dataset in that read and does not try again.
 
 A `ProvenanceRecord`'s `custodyChain` agents are resolved the same way.
 An agent may be the `id` of any record — a dataset, or a model that
@@ -57,9 +57,9 @@ answers with that one record whatever store holds it. `GET
 event with that record's current `recordStatus`, absent when the IRI
 denotes no record (`lookupFailed: true` when the backend could not be
 asked). The lookup goes one hop and reports status only; nothing is
-stored on either record. The distinct agents are resolved in one
-backend search per record store. A failed search marks every agent in
-that read.
+stored on either record. The distinct agents are resolved together
+against the graph, one batch of requests per record store. A failed
+lookup marks every agent in that read.
 
 A submission whose `type` is absent or unknown still gets its verdict:
 it fails validation (there is no schema for it) and lands as

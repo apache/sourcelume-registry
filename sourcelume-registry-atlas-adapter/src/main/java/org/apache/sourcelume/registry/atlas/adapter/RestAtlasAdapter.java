@@ -65,8 +65,9 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code POST /api/atlas/v2/entity/bulk} — create/update a record entity</li>
  *   <li>{@code GET  /api/atlas/v2/entity/uniqueAttribute/type/{typeName}?attr:qualifiedName=...} — lookup</li>
  *   <li>{@code DELETE /api/atlas/v2/entity/uniqueAttribute/type/{typeName}?attr:qualifiedName=...} — delete a stub</li>
- *   <li>{@code POST /api/atlas/v2/search/basic} — find record entities by record status,
- *       and resolve many qualified names in one search per entity type</li>
+ *   <li>{@code POST /api/atlas/v2/search/basic} — find record entities by record status</li>
+ *   <li>{@code GET  /api/atlas/v2/entity/bulk/uniqueAttribute/type/{typeName}?attr_0:qualifiedName=...}
+ *       — resolve many qualified names against the graph, not the search index</li>
  * </ul>
  *
  * <p>Atlas-specific JSON shapes live here and only here. The SPI stays
@@ -76,6 +77,16 @@ import org.slf4j.LoggerFactory;
 public class RestAtlasAdapter implements AtlasAdapter {
 
     private static final Logger log = LoggerFactory.getLogger(RestAtlasAdapter.class);
+
+    /**
+     * Characters budget for one bulk unique-attribute request target
+     * (path and query). Atlas's Jetty header buffer defaults to 16192
+     * ({@code atlas.jetty.request.buffer.size}); a request line past that
+     * is rejected before the lookup runs. Twelve thousand leaves room for
+     * the request line's method and version and for the headers the JDK
+     * client adds.
+     */
+    static final int BULK_LOOKUP_REQUEST_BUDGET = 12_000;
 
     private final SourcelumeAtlasProperties properties;
     private final ObjectMapper objectMapper;
@@ -444,10 +455,13 @@ public class RestAtlasAdapter implements AtlasAdapter {
     }
 
     /**
-     * One basic search per entity type, each naming every qualified name.
-     * Atlas basic search takes a single {@code typeName}, so a read that
-     * spans the dataset and model stores is two requests rather than two
-     * per IRI. The first type that holds an id wins.
+     * Graph lookup of every qualified name, one entity type at a time.
+     * Each type is read with {@code GET .../bulk/uniqueAttribute}, the
+     * bulk form of the single-name lookup, so a record is visible as soon
+     * as it is written and a deleted record is simply absent. Names are
+     * split so each request target stays within
+     * {@link #BULK_LOOKUP_REQUEST_BUDGET}. The first type that holds an
+     * id wins. A non-200 aborts the read before the next batch or type.
      */
     @Override
     public Map<String, RecordEntityDto> getRecordEntitiesByQualifiedNames(
@@ -461,7 +475,7 @@ public class RestAtlasAdapter implements AtlasAdapter {
             if (entityType == null || entityType.isBlank()) {
                 continue;
             }
-            for (RecordEntityDto entity : searchByQualifiedNames(entityType, names)) {
+            for (RecordEntityDto entity : lookupQualifiedNames(entityType, names, BULK_LOOKUP_REQUEST_BUDGET)) {
                 if (entity.getQualifiedName() != null) {
                     found.putIfAbsent(entity.getQualifiedName(), entity);
                 }
@@ -470,7 +484,7 @@ public class RestAtlasAdapter implements AtlasAdapter {
         return found;
     }
 
-    /** Skips nulls and repeats so the search filter names each id once. */
+    /** Skips nulls and repeats so each id is asked once per entity type. */
     private static List<String> distinctNames(List<String> qualifiedNames) {
         List<String> names = new ArrayList<>();
         if (qualifiedNames == null) {
@@ -485,47 +499,86 @@ public class RestAtlasAdapter implements AtlasAdapter {
     }
 
     /**
-     * Basic search for every qualified name under one entity type. A
-     * non-200 aborts the caller before the next type is asked.
+     * Reads one entity type. Exposed to tests so a tiny budget can force
+     * more than one request without building a 12k-character query.
      */
-    private List<RecordEntityDto> searchByQualifiedNames(String entityType, List<String> qualifiedNames) {
-        ObjectNode body = objectMapper.createObjectNode();
-        body.put("typeName", entityType);
-        body.put("excludeDeletedEntities", true);
-        body.put("limit", qualifiedNames.size());
-        ArrayNode attributes = body.putArray("attributes");
-        for (String attribute : attributesFor(entityType)) {
-            attributes.add(attribute);
+    List<RecordEntityDto> lookupQualifiedNames(String entityType, List<String> qualifiedNames, int requestBudget) {
+        List<RecordEntityDto> result = new ArrayList<>();
+        for (List<String> batch : batchesForUniqueAttributeLookup(entityType, qualifiedNames, requestBudget)) {
+            result.addAll(fetchUniqueAttributeBatch(entityType, batch));
         }
-        ObjectNode filters = body.putObject("entityFilters");
-        filters.put("condition", "OR");
-        ArrayNode criterion = filters.putArray("criterion");
-        for (String name : qualifiedNames) {
-            ObjectNode term = criterion.addObject();
-            term.put("attributeName", "qualifiedName");
-            term.put("operator", "=");
-            term.put("attributeValue", name);
-        }
+        return result;
+    }
 
+    /**
+     * Splits names so each bulk unique-attribute request target (path and
+     * query) is at most {@code requestBudget} characters. A single name
+     * that is already over the budget is left in a batch of its own.
+     */
+    static List<List<String>> batchesForUniqueAttributeLookup(
+            String entityType, List<String> qualifiedNames, int requestBudget) {
+        String pathPrefix = "/api/atlas/v2/entity/bulk/uniqueAttribute/type/" + entityType + "?";
+        List<List<String>> batches = new ArrayList<>();
+        List<String> batch = new ArrayList<>();
+        int length = pathPrefix.length();
+        for (String name : qualifiedNames) {
+            String param = uniqueAttributeParam(batch.size(), name);
+            int addition = param.length() + (batch.isEmpty() ? 0 : 1);
+            if (!batch.isEmpty() && length + addition > requestBudget) {
+                batches.add(batch);
+                batch = new ArrayList<>();
+                length = pathPrefix.length();
+                param = uniqueAttributeParam(0, name);
+                addition = param.length();
+            }
+            batch.add(name);
+            length += addition;
+        }
+        if (!batch.isEmpty()) {
+            batches.add(batch);
+        }
+        return batches;
+    }
+
+    private static String uniqueAttributeParam(int index, String qualifiedName) {
+        return "attr_" + index + ":qualifiedName=" + URLEncoder.encode(qualifiedName, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * One {@code GET /entity/bulk/uniqueAttribute} for the batch. Missing
+     * names are omitted from the body; only a non-200 fails the lookup.
+     */
+    private List<RecordEntityDto> fetchUniqueAttributeBatch(String entityType, List<String> qualifiedNames) {
+        StringBuilder query = new StringBuilder();
+        for (int i = 0; i < qualifiedNames.size(); i++) {
+            if (i > 0) {
+                query.append('&');
+            }
+            query.append(uniqueAttributeParam(i, qualifiedNames.get(i)));
+        }
+        String path = "/api/atlas/v2/entity/bulk/uniqueAttribute/type/" + entityType + "?" + query;
         try {
-            HttpResponse<String> resp =
-                    sendJson("POST", "/api/atlas/v2/search/basic", objectMapper.writeValueAsString(body));
+            HttpRequest req = baseRequest("GET", path).GET().build();
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() != 200) {
                 throw new AtlasAdapterException(
-                        "Failed to search record entities by qualified name: " + resp.body(), resp.statusCode(), null);
+                        "Failed to look up record entities by qualified name: " + resp.body(), resp.statusCode(), null);
             }
             JsonNode root = objectMapper.readTree(resp.body());
             List<RecordEntityDto> result = new ArrayList<>();
             for (JsonNode entity : root.path("entities")) {
+                if (!entity.isObject()) {
+                    continue;
+                }
                 result.add(toRecordEntityDto(entity));
             }
             return result;
         } catch (IOException e) {
             throw new AtlasAdapterException(
-                    "I/O error searching record entities by qualified name: " + e.getMessage(), 500, e);
+                    "I/O error looking up record entities by qualified name: " + e.getMessage(), 500, e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new AtlasAdapterException("Interrupted searching record entities by qualified name", 500, e);
+            throw new AtlasAdapterException("Interrupted looking up record entities by qualified name", 500, e);
         }
     }
 
