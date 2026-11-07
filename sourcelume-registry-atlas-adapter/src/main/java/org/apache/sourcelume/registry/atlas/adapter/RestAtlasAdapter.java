@@ -35,7 +35,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
@@ -63,7 +65,8 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code POST /api/atlas/v2/entity/bulk} — create/update a record entity</li>
  *   <li>{@code GET  /api/atlas/v2/entity/uniqueAttribute/type/{typeName}?attr:qualifiedName=...} — lookup</li>
  *   <li>{@code DELETE /api/atlas/v2/entity/uniqueAttribute/type/{typeName}?attr:qualifiedName=...} — delete a stub</li>
- *   <li>{@code POST /api/atlas/v2/search/basic} — find record entities by record status</li>
+ *   <li>{@code POST /api/atlas/v2/search/basic} — find record entities by record status,
+ *       and resolve many qualified names in one search per entity type</li>
  * </ul>
  *
  * <p>Atlas-specific JSON shapes live here and only here. The SPI stays
@@ -437,6 +440,92 @@ public class RestAtlasAdapter implements AtlasAdapter {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new AtlasAdapterException("Interrupted searching record entities by status", 500, e);
+        }
+    }
+
+    /**
+     * One basic search per entity type, each naming every qualified name.
+     * Atlas basic search takes a single {@code typeName}, so a read that
+     * spans the dataset and model stores is two requests rather than two
+     * per IRI. The first type that holds an id wins.
+     */
+    @Override
+    public Map<String, RecordEntityDto> getRecordEntitiesByQualifiedNames(
+            List<String> entityTypes, List<String> qualifiedNames) {
+        Map<String, RecordEntityDto> found = new LinkedHashMap<>();
+        List<String> names = distinctNames(qualifiedNames);
+        if (names.isEmpty() || entityTypes == null || entityTypes.isEmpty()) {
+            return found;
+        }
+        for (String entityType : entityTypes) {
+            if (entityType == null || entityType.isBlank()) {
+                continue;
+            }
+            for (RecordEntityDto entity : searchByQualifiedNames(entityType, names)) {
+                if (entity.getQualifiedName() != null) {
+                    found.putIfAbsent(entity.getQualifiedName(), entity);
+                }
+            }
+        }
+        return found;
+    }
+
+    /** Skips nulls and repeats so the search filter names each id once. */
+    private static List<String> distinctNames(List<String> qualifiedNames) {
+        List<String> names = new ArrayList<>();
+        if (qualifiedNames == null) {
+            return names;
+        }
+        for (String name : qualifiedNames) {
+            if (name != null && !names.contains(name)) {
+                names.add(name);
+            }
+        }
+        return names;
+    }
+
+    /**
+     * Basic search for every qualified name under one entity type. A
+     * non-200 aborts the caller before the next type is asked.
+     */
+    private List<RecordEntityDto> searchByQualifiedNames(String entityType, List<String> qualifiedNames) {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("typeName", entityType);
+        body.put("excludeDeletedEntities", true);
+        body.put("limit", qualifiedNames.size());
+        ArrayNode attributes = body.putArray("attributes");
+        for (String attribute : attributesFor(entityType)) {
+            attributes.add(attribute);
+        }
+        ObjectNode filters = body.putObject("entityFilters");
+        filters.put("condition", "OR");
+        ArrayNode criterion = filters.putArray("criterion");
+        for (String name : qualifiedNames) {
+            ObjectNode term = criterion.addObject();
+            term.put("attributeName", "qualifiedName");
+            term.put("operator", "=");
+            term.put("attributeValue", name);
+        }
+
+        try {
+            HttpResponse<String> resp =
+                    sendJson("POST", "/api/atlas/v2/search/basic", objectMapper.writeValueAsString(body));
+            if (resp.statusCode() != 200) {
+                throw new AtlasAdapterException(
+                        "Failed to search record entities by qualified name: " + resp.body(), resp.statusCode(), null);
+            }
+            JsonNode root = objectMapper.readTree(resp.body());
+            List<RecordEntityDto> result = new ArrayList<>();
+            for (JsonNode entity : root.path("entities")) {
+                result.add(toRecordEntityDto(entity));
+            }
+            return result;
+        } catch (IOException e) {
+            throw new AtlasAdapterException(
+                    "I/O error searching record entities by qualified name: " + e.getMessage(), 500, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AtlasAdapterException("Interrupted searching record entities by qualified name", 500, e);
         }
     }
 
