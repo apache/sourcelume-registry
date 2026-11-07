@@ -17,7 +17,9 @@
 package org.apache.sourcelume.registry.core;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
 import org.apache.sourcelume.registry.common.dto.RecordStatus;
 
@@ -106,6 +108,39 @@ public interface AtlasAdapter {
             RecordEntityDto entity = getRecordEntityByQualifiedName(entityType, qualifiedName);
             if (entity != null) {
                 found.add(entity);
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Retrieves the record each qualified name denotes, across the given
+     * entity types. An id names one record, so the first entity type that
+     * holds it wins and a later type must not replace it. Names the backend
+     * does not hold are absent from the map. Never returns null.
+     *
+     * <p>The default walks the single-name lookup, so a backend without a
+     * bulk search still satisfies the contract. One failed lookup aborts
+     * the rest of the batch: the caller marks every name instead of asking
+     * a backend that just failed about the names that remain.
+     *
+     * @param entityTypes the entity types to search, in precedence order
+     * @param qualifiedNames the qualified names to look up; duplicates are ignored
+     * @return the entities found, keyed by qualified name, never null
+     */
+    default Map<String, RecordEntityDto> getRecordEntitiesByQualifiedNames(
+            List<String> entityTypes, List<String> qualifiedNames) {
+        Map<String, RecordEntityDto> found = new LinkedHashMap<>();
+        if (qualifiedNames == null || qualifiedNames.isEmpty()) {
+            return found;
+        }
+        for (String qualifiedName : qualifiedNames) {
+            if (qualifiedName == null || found.containsKey(qualifiedName)) {
+                continue;
+            }
+            List<RecordEntityDto> entities = getRecordEntitiesByQualifiedName(entityTypes, qualifiedName);
+            if (!entities.isEmpty()) {
+                found.put(qualifiedName, entities.get(0));
             }
         }
         return found;

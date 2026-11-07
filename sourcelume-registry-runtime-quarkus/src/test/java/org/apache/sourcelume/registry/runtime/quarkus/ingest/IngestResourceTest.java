@@ -32,7 +32,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
 import org.apache.sourcelume.registry.common.dto.RecordStatus;
-import org.apache.sourcelume.registry.common.dto.RecordType;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.common.dto.SourcelumeModelDto;
 import org.apache.sourcelume.registry.core.AtlasAdapter;
@@ -98,6 +97,7 @@ class IngestResourceTest {
         fake.unreachable.clear();
         fake.writes = 0;
         fake.deletes = 0;
+        fake.bulkLookups = 0;
     }
 
     @Test
@@ -513,40 +513,48 @@ class IngestResourceTest {
 
         assertEquals(2, body.trainingData().size());
         body.trainingData().forEach(entry -> assertEquals(RecordStatus.VALIDATED, entry.recordStatus()));
-        assertEquals(1, fake.lookups.get(RECORD_ID));
+        assertEquals(1, fake.bulkLookups);
+        assertNull(fake.lookups.get(RECORD_ID), "the repeated dataset is not fetched one IRI at a time");
     }
 
-    /** A dataset the backend cannot be asked about marks only its own entry; the model record stays readable. */
+    /**
+     * The references of one read are one search. When that search fails, every
+     * entry is marked and the model record stays readable.
+     */
     @Test
-    void aFailedDatasetLookupMarksOnlyItsEntry() {
+    void aFailedDatasetLookupMarksEveryEntry() {
         resource.submit(VALID_RECORD.getBytes(StandardCharsets.UTF_8));
         resource.submit(modelRecord("complete", RECORD_ID, UNREGISTERED_DATASET).getBytes(StandardCharsets.UTF_8));
         fake.unreachable.add(UNREGISTERED_DATASET);
+        fake.bulkLookups = 0;
 
         var response = resource.status(MODEL_RECORD_ID);
 
         assertEquals(200, response.getStatus());
         List<IngestResource.TrainingDataResponse> trainingData =
                 ((IngestResource.RecordResponse) response.getEntity()).trainingData();
-        assertEquals(RecordStatus.VALIDATED, trainingData.get(0).recordStatus());
-        assertNull(trainingData.get(0).lookupFailed());
-        assertNull(trainingData.get(1).recordStatus());
-        assertEquals(Boolean.TRUE, trainingData.get(1).lookupFailed());
+        trainingData.forEach(entry -> {
+            assertNull(entry.recordStatus());
+            assertEquals(Boolean.TRUE, entry.lookupFailed());
+        });
+        assertEquals(1, fake.bulkLookups);
     }
 
-    /** After a failed lookup the backend is not asked again: the remaining datasets are marked without waiting. */
+    /** A failed search is the only request: the remaining datasets are not asked about on their own. */
     @Test
     void datasetsAfterAFailedLookupAreMarkedWithoutAsking() {
         resource.submit(modelRecord("complete", UNREGISTERED_DATASET, RECORD_ID).getBytes(StandardCharsets.UTF_8));
         fake.unreachable.add(UNREGISTERED_DATASET);
         fake.lookups.clear();
+        fake.bulkLookups = 0;
 
         List<IngestResource.TrainingDataResponse> trainingData = ((IngestResource.RecordResponse)
                         resource.status(MODEL_RECORD_ID).getEntity())
                 .trainingData();
 
         trainingData.forEach(entry -> assertEquals(Boolean.TRUE, entry.lookupFailed()));
-        assertNull(fake.lookups.get(RECORD_ID), "no lookup after the backend failed");
+        assertEquals(1, fake.bulkLookups);
+        assertNull(fake.lookups.get(RECORD_ID), "no per-IRI lookup after the backend failed");
     }
 
     /** Only a VALIDATED model record's references are resolved; an INCOMPLETE one is not a published claim. */
@@ -615,7 +623,7 @@ class IngestResourceTest {
         assertEquals(RecordStatus.INCOMPLETE, after.custodyChain().get(0).recordStatus());
     }
 
-    /** An agent named in several events is looked up once (in each record store) and reported for each. */
+    /** An agent named in several events is looked up once for the read and reported for each. */
     @Test
     void anAgentNamedTwiceIsLookedUpOncePerStore() {
         resource.submit(datasetRecord(UPSTREAM_RECORD_ID, EXTERNAL_AGENT).getBytes(StandardCharsets.UTF_8));
@@ -628,7 +636,8 @@ class IngestResourceTest {
 
         assertEquals(2, body.custodyChain().size());
         body.custodyChain().forEach(event -> assertEquals(RecordStatus.VALIDATED, event.recordStatus()));
-        assertEquals(RecordType.entityTypeNames().size(), fake.lookups.get(UPSTREAM_RECORD_ID));
+        assertEquals(1, fake.bulkLookups);
+        assertNull(fake.lookups.get(UPSTREAM_RECORD_ID), "the repeated agent is not fetched once per store");
     }
 
     /** One IRI denotes one record of any type: an agent that is a model record reports that record's status. */
@@ -657,23 +666,25 @@ class IngestResourceTest {
         assertNull(body.trainingData().get(0).recordStatus());
     }
 
-    /** An agent the backend cannot be asked about marks only its own event; the dataset record stays readable. */
+    /** The agents of one read are one search. When that search fails, every event is marked. */
     @Test
-    void aFailedAgentLookupMarksOnlyItsEvent() {
+    void aFailedAgentLookupMarksEveryEvent() {
         resource.submit(datasetRecord(UPSTREAM_RECORD_ID, EXTERNAL_AGENT).getBytes(StandardCharsets.UTF_8));
         resource.submit(
                 datasetRecord(RECORD_ID, UPSTREAM_RECORD_ID, EXTERNAL_AGENT).getBytes(StandardCharsets.UTF_8));
         fake.unreachable.add(EXTERNAL_AGENT);
+        fake.bulkLookups = 0;
 
         var response = resource.status(RECORD_ID);
 
         assertEquals(200, response.getStatus());
         List<IngestResource.CustodyEventResponse> custodyChain =
                 ((IngestResource.RecordResponse) response.getEntity()).custodyChain();
-        assertEquals(RecordStatus.VALIDATED, custodyChain.get(0).recordStatus());
-        assertNull(custodyChain.get(0).lookupFailed());
-        assertNull(custodyChain.get(1).recordStatus());
-        assertEquals(Boolean.TRUE, custodyChain.get(1).lookupFailed());
+        custodyChain.forEach(event -> {
+            assertNull(event.recordStatus());
+            assertEquals(Boolean.TRUE, event.lookupFailed());
+        });
+        assertEquals(1, fake.bulkLookups);
     }
 
     /** Only a VALIDATED dataset record's agents are resolved; an INCOMPLETE one is not a published claim. */
@@ -764,6 +775,8 @@ class IngestResourceTest {
         final java.util.Set<String> unreachable = new java.util.HashSet<>();
         int writes;
         int deletes;
+        /** Bulk reference lookups. One read is one call, however many IRIs it names. */
+        int bulkLookups;
 
         @Override
         public boolean isServerReady() {
@@ -794,6 +807,31 @@ class IngestResourceTest {
                 throw new AtlasAdapterException("Atlas unreachable", 503, null);
             }
             return store.get(new StoreKey(entityType, qualifiedName));
+        }
+
+        @Override
+        public java.util.Map<String, RecordEntityDto> getRecordEntitiesByQualifiedNames(
+                List<String> entityTypes, List<String> qualifiedNames) {
+            bulkLookups++;
+            java.util.Map<String, RecordEntityDto> found = new java.util.LinkedHashMap<>();
+            java.util.List<String> seen = new java.util.ArrayList<>();
+            for (String name : qualifiedNames) {
+                if (name == null || seen.contains(name)) {
+                    continue;
+                }
+                seen.add(name);
+                if (unreachable.contains(name)) {
+                    throw new AtlasAdapterException("Atlas unreachable", 503, null);
+                }
+                for (String entityType : entityTypes) {
+                    RecordEntityDto entity = store.get(new StoreKey(entityType, name));
+                    if (entity != null) {
+                        found.put(name, entity);
+                        break;
+                    }
+                }
+            }
+            return found;
         }
 
         @Override
