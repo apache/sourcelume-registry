@@ -27,28 +27,37 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
 import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
+import org.apache.sourcelume.registry.common.dto.SourcelumeModelDto;
 import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * HTTP-level tests for the status search and the lifecycle attribute
- * mapping of {@link RestAtlasAdapter}, against a stub Atlas served by
- * the JDK {@code HttpServer} — no Docker, no Quarkus bootstrap.
+ * HTTP-level tests for the status search, the bulk qualified-name
+ * lookup, and the lifecycle attribute mapping of {@link RestAtlasAdapter},
+ * against a stub Atlas served by the JDK {@code HttpServer} — no Docker,
+ * no Quarkus bootstrap.
  */
 class RestAtlasAdapterSearchTest {
 
     private HttpServer server;
     private RestAtlasAdapter adapter;
+    private static final String ONE = "https://example.org/records/one";
+    private static final String TWO = "https://example.org/records/two";
+    private static final String THREE = "https://example.org/records/three";
+
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final AtomicReference<String> lastRequestBody = new AtomicReference<>();
 
@@ -112,6 +121,180 @@ class RestAtlasAdapterSearchTest {
 
         assertNotNull(found);
         assertTrue(found.isEmpty());
+    }
+
+    @Test
+    void bulkLookupReadsTheGraphOncePerTypeAndKeepsTheFirstType() {
+        List<String> methods = new ArrayList<>();
+        List<String> paths = new ArrayList<>();
+        List<String> queries = new ArrayList<>();
+        server.createContext("/", exchange -> {
+            methods.add(exchange.getRequestMethod());
+            paths.add(exchange.getRequestURI().getPath());
+            queries.add(exchange.getRequestURI().getRawQuery());
+            String path = exchange.getRequestURI().getPath();
+            String typeName = path.substring(path.lastIndexOf('/') + 1);
+            String status = SourcelumeModelDto.TYPE_NAME.equals(typeName) ? "INCOMPLETE" : "VALIDATED";
+            // A non-object in the list is skipped; a name Atlas omits is not a failure.
+            byte[] out = ("{\"entities\": [null, " + typedEntity("guid-" + typeName, typeName, status, TWO) + "]}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, out.length);
+            exchange.getResponseBody().write(out);
+            exchange.close();
+        });
+
+        Map<String, RecordEntityDto> found = adapter.getRecordEntitiesByQualifiedNames(
+                List.of(SourcelumeDatasetDto.TYPE_NAME, SourcelumeModelDto.TYPE_NAME), List.of(ONE, TWO, THREE, ONE));
+
+        assertEquals(2, queries.size(), "one graph lookup per entity type, not one per IRI");
+        assertEquals(List.of("GET", "GET"), methods);
+        assertEquals(1, found.size());
+        assertEquals(SourcelumeDatasetDto.TYPE_NAME, found.get(TWO).getTypeName());
+        assertEquals(RecordStatus.VALIDATED, found.get(TWO).getRecordStatus());
+        assertNull(found.get(ONE));
+        assertNull(found.get(THREE));
+
+        String expectedQuery = uniqueAttributeQuery(ONE, TWO, THREE);
+        assertEquals(
+                List.of(bulkLookupPath(SourcelumeDatasetDto.TYPE_NAME), bulkLookupPath(SourcelumeModelDto.TYPE_NAME)),
+                paths);
+        assertEquals(List.of(expectedQuery, expectedQuery), queries);
+    }
+
+    @Test
+    void bulkLookupOfNoNamesDoesNotCallTheBackend() {
+        Map<String, RecordEntityDto> found =
+                adapter.getRecordEntitiesByQualifiedNames(List.of(SourcelumeDatasetDto.TYPE_NAME), List.of());
+
+        assertNotNull(found);
+        assertTrue(found.isEmpty());
+    }
+
+    @Test
+    void bulkLookupStopsWhenTheFirstRequestFails() {
+        List<String> paths = new ArrayList<>();
+        server.createContext("/", exchange -> {
+            paths.add(exchange.getRequestURI().getPath());
+            byte[] out = "{\"errorMessage\": \"boom\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(500, out.length);
+            exchange.getResponseBody().write(out);
+            exchange.close();
+        });
+
+        assertThrows(
+                AtlasAdapterException.class,
+                () -> adapter.getRecordEntitiesByQualifiedNames(
+                        List.of(SourcelumeDatasetDto.TYPE_NAME, SourcelumeModelDto.TYPE_NAME), List.of(ONE)));
+        assertEquals(List.of(bulkLookupPath(SourcelumeDatasetDto.TYPE_NAME)), paths);
+    }
+
+    @Test
+    void bulkLookupOfAMissingTypeFailsTheRead() {
+        // Atlas omits unknown names from a 200. A 404 is a missing type or a
+        // broken endpoint, and must not look like "no records".
+        List<String> paths = new ArrayList<>();
+        server.createContext("/", exchange -> {
+            paths.add(exchange.getRequestURI().getPath());
+            byte[] out = "{\"errorMessage\": \"type not found\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(404, out.length);
+            exchange.getResponseBody().write(out);
+            exchange.close();
+        });
+
+        AtlasAdapterException exception = assertThrows(
+                AtlasAdapterException.class,
+                () -> adapter.getRecordEntitiesByQualifiedNames(
+                        List.of(SourcelumeDatasetDto.TYPE_NAME, SourcelumeModelDto.TYPE_NAME), List.of(ONE)));
+        assertEquals(404, exception.getHttpStatusCode());
+        assertEquals(List.of(bulkLookupPath(SourcelumeDatasetDto.TYPE_NAME)), paths);
+    }
+
+    @Test
+    void qualifiedNamesAreEncodedLikeTheSingleNameLookup() {
+        List<String> queries = new ArrayList<>();
+        String name = "urn:example:a b+c\"d*e#f?g&h";
+        server.createContext("/", exchange -> {
+            queries.add(exchange.getRequestURI().getRawQuery());
+            byte[] out = "{\"entities\": []}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, out.length);
+            exchange.getResponseBody().write(out);
+            exchange.close();
+        });
+
+        Map<String, RecordEntityDto> found =
+                adapter.getRecordEntitiesByQualifiedNames(List.of(SourcelumeDatasetDto.TYPE_NAME), List.of(name));
+
+        assertTrue(found.isEmpty());
+        assertEquals(List.of(uniqueAttributeQuery(name)), queries);
+        assertTrue(queries.get(0).contains("a+b"), "a space is encoded as '+', matching the single-name lookup");
+    }
+
+    @Test
+    void batchesStayWithinTheRequestBudget() {
+        String type = SourcelumeDatasetDto.TYPE_NAME;
+        int twoNames = requestTarget(type, ONE, TWO).length();
+        assertEquals(
+                List.of(List.of(ONE, TWO), List.of(THREE)),
+                RestAtlasAdapter.batchesForUniqueAttributeLookup(type, List.of(ONE, TWO, THREE), twoNames));
+
+        // A budget smaller than every name still keeps each name, alone.
+        String longName = "x".repeat(80);
+        assertEquals(
+                List.of(List.of(longName), List.of(ONE)),
+                RestAtlasAdapter.batchesForUniqueAttributeLookup(type, List.of(longName, ONE), 1));
+        assertEquals(
+                List.of(List.of(ONE, TWO, THREE)),
+                RestAtlasAdapter.batchesForUniqueAttributeLookup(
+                        type, List.of(ONE, TWO, THREE), RestAtlasAdapter.BULK_LOOKUP_REQUEST_BUDGET));
+    }
+
+    @Test
+    void aTightBudgetSendsOneRequestPerBatchAndMergesTheEntities() {
+        List<String> queries = new ArrayList<>();
+        server.createContext("/", exchange -> {
+            String rawQuery = exchange.getRequestURI().getRawQuery();
+            queries.add(rawQuery);
+            String qualifiedName = rawQuery.contains(URLEncoder.encode(ONE, StandardCharsets.UTF_8)) ? ONE : TWO;
+            byte[] out = ("{\"entities\": [null, "
+                            + typedEntity("guid", SourcelumeDatasetDto.TYPE_NAME, "VALIDATED", qualifiedName)
+                            + "]}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, out.length);
+            exchange.getResponseBody().write(out);
+            exchange.close();
+        });
+
+        List<RecordEntityDto> found =
+                adapter.lookupQualifiedNames(SourcelumeDatasetDto.TYPE_NAME, List.of(ONE, TWO), 1);
+
+        assertEquals(List.of(uniqueAttributeParam(0, ONE), uniqueAttributeParam(0, TWO)), queries);
+        assertEquals(
+                List.of(ONE, TWO),
+                found.stream().map(RecordEntityDto::getQualifiedName).toList());
+        assertEquals(RecordStatus.VALIDATED, found.get(0).getRecordStatus());
+    }
+
+    @Test
+    void aFailedBatchIsNotFollowedByAnother() {
+        List<String> queries = new ArrayList<>();
+        server.createContext("/", exchange -> {
+            queries.add(exchange.getRequestURI().getRawQuery());
+            byte[] out = "{\"errorMessage\": \"boom\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(500, out.length);
+            exchange.getResponseBody().write(out);
+            exchange.close();
+        });
+
+        assertThrows(
+                AtlasAdapterException.class,
+                () -> adapter.lookupQualifiedNames(SourcelumeDatasetDto.TYPE_NAME, List.of(ONE, TWO), 1));
+        assertEquals(List.of(uniqueAttributeParam(0, ONE)), queries);
     }
 
     @Test
@@ -179,6 +362,30 @@ class RestAtlasAdapterSearchTest {
 
     // --- stub helpers ---
 
+    private static String bulkLookupPath(String entityType) {
+        return "/api/atlas/v2/entity/bulk/uniqueAttribute/type/" + entityType;
+    }
+
+    private static String requestTarget(String entityType, String... names) {
+        return bulkLookupPath(entityType) + "?" + uniqueAttributeQuery(names);
+    }
+
+    private static String uniqueAttributeQuery(String... names) {
+        StringBuilder query = new StringBuilder();
+        for (int i = 0; i < names.length; i++) {
+            if (i > 0) {
+                query.append('&');
+            }
+            query.append(uniqueAttributeParam(i, names[i]));
+        }
+        return query.toString();
+    }
+
+    /** Same encoding as {@link RestAtlasAdapter}'s single-name lookup: UTF-8, space as {@code +}. */
+    private static String uniqueAttributeParam(int index, String qualifiedName) {
+        return "attr_" + index + ":qualifiedName=" + URLEncoder.encode(qualifiedName, StandardCharsets.UTF_8);
+    }
+
     private void serve(int status, String responseBody) {
         server.createContext("/", exchange -> {
             byte[] body = exchange.getRequestBody().readAllBytes();
@@ -191,6 +398,14 @@ class RestAtlasAdapterSearchTest {
             exchange.getResponseBody().write(out);
             exchange.close();
         });
+    }
+
+    private String typedEntity(String guid, String typeName, String recordStatus, String qualifiedName) {
+        return "{\"guid\": \"" + guid + "\", \"typeName\": \"" + typeName + "\", \"attributes\": {"
+                + "\"qualifiedName\": \"" + qualifiedName + "\","
+                + "\"name\": \"" + qualifiedName.substring(qualifiedName.lastIndexOf('/') + 1) + "\","
+                + "\"recordStatus\": \"" + recordStatus + "\""
+                + "}}";
     }
 
     private String entity(String guid, String recordStatus, String qualifiedName) {

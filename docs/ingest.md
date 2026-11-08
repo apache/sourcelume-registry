@@ -43,9 +43,10 @@ on the model entity — and the dataset records themselves stay untouched.
 `GET /records/{id}` on a VALIDATED model record lists each `trainingData`
 entry with the referenced dataset record's current `recordStatus`, absent
 when the registry holds no record for that IRI (`lookupFailed: true`
-instead when the backend could not be asked). Each distinct dataset is
-one backend lookup, so the read gets slower the more datasets a record
-lists.
+instead when the backend could not be asked). The distinct datasets are
+resolved together against the graph, several names per request, so a
+long list does not become one call per dataset. A failed lookup marks
+every dataset in that read and does not try again.
 
 A `ProvenanceRecord`'s `custodyChain` agents are resolved the same way.
 An agent may be the `id` of any record — a dataset, or a model that
@@ -56,8 +57,9 @@ answers with that one record whatever store holds it. `GET
 event with that record's current `recordStatus`, absent when the IRI
 denotes no record (`lookupFailed: true` when the backend could not be
 asked). The lookup goes one hop and reports status only; nothing is
-stored on either record. Each distinct agent is one backend lookup per
-record store.
+stored on either record. The distinct agents are resolved together
+against the graph, one batch of requests per record store. A failed
+lookup marks every agent in that read.
 
 A submission whose `type` is absent or unknown still gets its verdict:
 it fails validation (there is no schema for it) and lands as

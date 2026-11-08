@@ -407,35 +407,34 @@ public class IngestResource {
      * Looks up the record each IRI denotes among the given entity types,
      * as it stands now. An IRI listed more than once is looked up once.
      *
-     * <p>One lookup per distinct IRI and entity type, made one after
-     * another: the read costs grow with the number of IRIs. A failed
-     * lookup marks its IRI instead of failing the read, and the IRIs
-     * after it are marked without asking the backend: a backend that
-     * just timed out would make every further lookup wait out its own
-     * timeout.
+     * <p>The distinct IRIs are resolved together against the graph, one
+     * entity type at a time and several names per request. A failed
+     * lookup marks every IRI in that read instead of failing the read,
+     * and nothing further is asked of a backend that just failed.
      */
     private Map<String, RecordState> lookUpRecords(List<String> iris, List<String> entityTypes) {
-        Map<String, RecordState> states = new HashMap<>();
-        boolean backendFailed = false;
+        List<String> distinct = new ArrayList<>();
         for (String iri : iris) {
-            if (!states.containsKey(iri)) {
-                RecordState state = backendFailed ? RecordState.FAILED : lookUpRecord(iri, entityTypes);
-                backendFailed |= state.lookupFailed();
-                states.put(iri, state);
+            if (!distinct.contains(iri)) {
+                distinct.add(iri);
             }
         }
-        return states;
-    }
-
-    private RecordState lookUpRecord(String iri, List<String> entityTypes) {
+        Map<String, RecordState> states = new HashMap<>();
+        Map<String, RecordEntityDto> found;
         try {
-            // One IRI denotes one record, so at most one store holds it.
-            List<RecordEntityDto> found = atlasAdapter.getRecordEntitiesByQualifiedName(entityTypes, iri);
-            return new RecordState(found.isEmpty() ? null : found.get(0).getRecordStatus(), false);
+            found = atlasAdapter.getRecordEntitiesByQualifiedNames(entityTypes, distinct);
         } catch (AtlasAdapterException e) {
-            log.warn("Could not look up the record for '{}': {}", iri, e.getMessage());
-            return RecordState.FAILED;
+            log.warn("Could not look up {} record reference(s): {}", distinct.size(), e.getMessage());
+            for (String iri : distinct) {
+                states.put(iri, RecordState.FAILED);
+            }
+            return states;
         }
+        for (String iri : distinct) {
+            RecordEntityDto entity = found.get(iri);
+            states.put(iri, new RecordState(entity == null ? null : entity.getRecordStatus(), false));
+        }
+        return states;
     }
 
     private record RecordState(RecordStatus recordStatus, boolean lookupFailed) {
