@@ -310,6 +310,36 @@ class IngestResourceTest {
     }
 
     @Test
+    void invalidUtf8BodyIsRejected() {
+        // Two bytes that are not a valid UTF-8 sequence anywhere in the body.
+        byte[] valid = VALID_RECORD.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] invalid = new byte[valid.length + 2];
+        System.arraycopy(valid, 0, invalid, 0, valid.length);
+        invalid[valid.length] = (byte) 0xFF;
+        invalid[valid.length + 1] = (byte) 0xFE;
+
+        var response = resource.submit(invalid);
+
+        assertEquals(400, response.getStatus());
+        assertEquals(0, fake.writes, "an invalid body must not reach the backend");
+    }
+
+    @Test
+    void validUtf8WithNonAsciiRoundTrips() {
+        String original = VALID_RECORD.replace("Ingest endpoint test record", "Caf\u00e9 \ud83d\ude00");
+        byte[] bytes = original.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        var response = resource.submit(bytes);
+
+        assertEquals(201, response.getStatus());
+        assertEquals(
+                original,
+                fake.getRecordEntityByQualifiedName(
+                                org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto.TYPE_NAME, RECORD_ID)
+                        .getRawJsonLd());
+    }
+
+    @Test
     void statusOfAnUnknownRecordIs404() {
         var response = resource.status("https://sourcelume.apache.org/records/unknown");
 

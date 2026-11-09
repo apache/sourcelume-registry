@@ -30,6 +30,9 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
 import java.net.URLEncoder;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -166,7 +169,23 @@ public class IngestResource {
             description = "The backend is unavailable; retry later",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public Response submit(byte[] received) {
-        String rawJsonLd = new String(received, StandardCharsets.UTF_8);
+        // RFC 8259 requires UTF-8 for JSON exchanged between systems. Decode
+        // strictly so a body that is not valid UTF-8 is refused here instead
+        // of being silently repaired (U+FFFD substitution), which would store
+        // text that no longer matches the received bytes or their digest.
+        String rawJsonLd;
+        try {
+            rawJsonLd = StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(received))
+                    .toString();
+        } catch (CharacterCodingException e) {
+            return Response.status(400)
+                    .entity(new ErrorResponse("Request body is not valid UTF-8"))
+                    .build();
+        }
         String recordId;
         try {
             recordId = RecordJson.extractRecordId(rawJsonLd);
