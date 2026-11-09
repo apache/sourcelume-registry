@@ -19,6 +19,7 @@ package org.apache.sourcelume.registry.common.dto;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import org.apache.sourcelume.registry.spi.RecordStatus;
 import org.junit.jupiter.api.Test;
 
 class RecordStatusTest {

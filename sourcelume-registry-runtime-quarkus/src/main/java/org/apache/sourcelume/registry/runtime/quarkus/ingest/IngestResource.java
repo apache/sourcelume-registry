@@ -36,21 +36,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.sourcelume.registry.common.dto.CustodyEventDto;
-import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
-import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.common.dto.RecordType;
-import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
-import org.apache.sourcelume.registry.common.dto.SourcelumeModelDto;
 import org.apache.sourcelume.registry.common.dto.TrainingProvenanceRecordDto.TrainingDataEntryDto;
 import org.apache.sourcelume.registry.common.mapper.ProvenanceRecordMapper;
 import org.apache.sourcelume.registry.common.mapper.RecordJson;
 import org.apache.sourcelume.registry.common.mapper.TrainingProvenanceRecordMapper;
-import org.apache.sourcelume.registry.core.AtlasAdapter;
-import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.core.ingest.IngestResult;
 import org.apache.sourcelume.registry.core.ingest.IngestService;
+import org.apache.sourcelume.registry.core.ingest.RecordSubmission;
 import org.apache.sourcelume.registry.core.validation.ValidationResult;
 import org.apache.sourcelume.registry.runtime.quarkus.RequestBodies;
+import org.apache.sourcelume.registry.spi.*;
+import org.apache.sourcelume.registry.spi.RecordStatus;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.headers.Header;
@@ -91,13 +88,13 @@ public class IngestResource {
 
     private static final Logger log = LoggerFactory.getLogger(IngestResource.class);
 
-    private final AtlasAdapter atlasAdapter;
+    private final RecordStore store;
     private final IngestService ingestService;
     private final ObjectMapper objectMapper;
 
     @Inject
-    IngestResource(AtlasAdapter atlasAdapter, IngestService ingestService, ObjectMapper objectMapper) {
-        this.atlasAdapter = atlasAdapter;
+    IngestResource(RecordStore store, IngestService ingestService, ObjectMapper objectMapper) {
+        this.store = store;
         this.ingestService = ingestService;
         this.objectMapper = objectMapper;
     }
@@ -158,6 +155,10 @@ public class IngestResource {
             responseCode = "409",
             description = "The record is already VALIDATED, or the id is taken under a different record type",
             content = @Content(schema = @Schema(implementation = ConflictResponse.class)))
+    @APIResponse(
+            responseCode = "413",
+            description = "The document exceeds the storage size limit",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @APIResponse(responseCode = "415", description = "Unsupported content type")
     @APIResponse(
             responseCode = "502",
@@ -165,9 +166,19 @@ public class IngestResource {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @APIResponse(
             responseCode = "503",
-            description = "The backend is unavailable; retry later",
+            description = "The backend is unavailable or the write outcome is unknown",
+            headers =
+                    @Header(
+                            name = "X-Sourcelume-Error",
+                            description = "UNKNOWN_WRITE requires reconciliation before retrying",
+                            schema = @Schema(type = SchemaType.STRING)),
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public Response submit(byte[] received) {
+        if (received != null && received.length > store.limits().maxDocumentBytes()) {
+            return Response.status(413)
+                    .entity(new ErrorResponse("Document exceeds the storage size limit"))
+                    .build();
+        }
         // Decode strictly: the lenient String constructor swaps invalid
         // input for U+FFFD, which would leave the stored document
         // disagreeing with the digest over the received bytes.
@@ -186,51 +197,21 @@ public class IngestResource {
                     .build();
         }
 
-        // The record's type term selects its store: ProvenanceRecord →
-        // sourcelume_dataset, TrainingProvenanceRecord → sourcelume_model.
-        // A document without a known type still lands on the dataset
-        // entity — the chain will mark it INCOMPLETE and it stays curatable.
-        String recordTypeTerm = RecordJson.extractRecordType(rawJsonLd).orElse(null);
-        String entityType = RecordType.entityTypeFor(recordTypeTerm);
-
-        // An id names one record of one type for its whole life, including
-        // while INCOMPLETE. Only an unpublished record in the same store
-        // can be corrected; conflicts must leave the stored record intact.
-        List<RecordEntityDto> stored =
-                atlasAdapter.getRecordEntitiesByQualifiedName(RecordType.entityTypeNames(), recordId);
-        RecordEntityDto existing = null;
-        for (RecordEntityDto entity : stored) {
-            if (entity.getRecordStatus() == RecordStatus.VALIDATED || !entityType.equals(entity.getTypeName())) {
-                return conflict(recordId, entity);
-            }
-            existing = entity;
+        try {
+            IngestResult result = ingestService.process(RecordSubmission.builder()
+                    .document(RawDocument.builder().bytes(received).build())
+                    .build());
+            return Response.status(result.disposition() == WriteResult.Disposition.CREATED ? 201 : 200)
+                    .location(locationOf(recordId))
+                    .entity(IngestResponse.of(result, objectMapper))
+                    .build();
+        } catch (RecordConflictException e) {
+            if (e.current() == null)
+                return Response.status(409)
+                        .entity(new ErrorResponse("Record changed during submission"))
+                        .build();
+            return conflict(recordId, e.current().record(), e.reason());
         }
-
-        // Inline validation: the same IngestService a queue consumer
-        // would call the day a slow validation step makes a real queue
-        // worth its price. The record reaches the store only with its
-        // verdict.
-        RecordEntityDto submitted = RecordType.fromTypeName(recordTypeTerm)
-                .map(RecordType::newEntity)
-                .orElseGet(SourcelumeDatasetDto::new);
-        submitted.setQualifiedName(recordId);
-        submitted.setRawJsonLd(rawJsonLd);
-        // The digest covers the received bytes, not the decoded string —
-        // "byte for byte" for real, e.g. for later signature checks.
-        submitted.setSha256(sha256Hex(received));
-        // Atlas requires a name on every entity write; a conforming
-        // record's promotion overwrites the placeholder with the mapped
-        // name, an INCOMPLETE verdict keeps it.
-        submitted.setName(placeholderName(recordId));
-        if (existing != null) {
-            submitted.setGuid(existing.getGuid());
-        }
-        IngestResult result = ingestService.process(submitted);
-
-        return Response.status(stored.isEmpty() ? 201 : 200)
-                .location(locationOf(recordId))
-                .entity(IngestResponse.of(result, objectMapper))
-                .build();
     }
 
     @GET
@@ -263,24 +244,29 @@ public class IngestResource {
                     String id) {
         // The id's owning entity type is discovered, not stored — check
         // each record type's store until one answers.
-        List<RecordEntityDto> found = atlasAdapter.getRecordEntitiesByQualifiedName(RecordType.entityTypeNames(), id);
-        RecordEntityDto stored = found.isEmpty() ? null : found.get(0);
+        RecordEnvelope stored = store.get(id).map(StoredRecord::record).orElse(null);
         if (stored == null) {
             return Response.status(404)
                     .entity(new ErrorResponse("No record for id: " + id))
                     .build();
         }
-        List<TrainingDataResponse> trainingData = null;
-        List<CustodyEventResponse> custodyChain = null;
-        if (stored.getRecordStatus() == RecordStatus.VALIDATED && stored.getRawJsonLd() != null) {
-            if (stored instanceof SourcelumeModelDto) {
-                trainingData = resolveTrainingData(stored.getRawJsonLd());
-            } else if (stored instanceof SourcelumeDatasetDto) {
-                custodyChain = resolveCustodyChain(stored.getRawJsonLd());
-            }
+        if (stored.validation() == null
+                || stored.validation().status() != RecordStatus.VALIDATED
+                || stored.document() == null) {
+            return Response.ok(RecordResponse.of(stored, null, null, objectMapper))
+                    .build();
         }
-        return Response.ok(RecordResponse.of(stored, trainingData, custodyChain))
-                .build();
+        if (RecordType.TRAINING_PROVENANCE_RECORD.typeName().equals(stored.type())) {
+            return Response.ok(RecordResponse.of(
+                            stored, resolveTrainingData(stored.document().text()), null, objectMapper))
+                    .build();
+        }
+        if (RecordType.PROVENANCE_RECORD.typeName().equals(stored.type())) {
+            return Response.ok(RecordResponse.of(
+                            stored, null, resolveCustodyChain(stored.document().text()), objectMapper))
+                    .build();
+        }
+        return Response.ok(RecordResponse.of(stored, null, null, objectMapper)).build();
     }
 
     @GET
@@ -320,8 +306,7 @@ public class IngestResource {
     public Response document(
             @Parameter(description = "The record's id (IRI); encode it when calling the API directly") @PathParam("id")
                     String id) {
-        List<RecordEntityDto> found = atlasAdapter.getRecordEntitiesByQualifiedName(RecordType.entityTypeNames(), id);
-        RecordEntityDto stored = found.isEmpty() ? null : found.get(0);
+        RecordEnvelope stored = store.get(id).map(StoredRecord::record).orElse(null);
         if (stored == null) {
             return Response.status(404)
                     .type(MediaType.APPLICATION_JSON)
@@ -330,15 +315,15 @@ public class IngestResource {
         }
         // A plain entity under the id (no provenance submission) carries
         // no document at all — the endpoint has nothing to return.
-        if (stored.getRawJsonLd() == null) {
+        if (stored.document() == null) {
             return Response.status(404)
                     .type(MediaType.APPLICATION_JSON)
                     .entity(new ErrorResponse("The record carries no stored document for id: " + id))
                     .build();
         }
-        Response.ResponseBuilder ok = Response.ok(stored.getRawJsonLd()).type("application/ld+json");
-        if (stored.getSha256() != null) {
-            ok.tag(stored.getSha256());
+        Response.ResponseBuilder ok = Response.ok(stored.document().text()).type("application/ld+json");
+        if (stored.document().sha256() != null) {
+            ok.tag(stored.document().sha256());
         }
         return ok.build();
     }
@@ -360,7 +345,7 @@ public class IngestResource {
         // The spec makes trainingData entries dataset records.
         Map<String, RecordState> states = lookUpRecords(
                 entries.stream().map(TrainingDataEntryDto::getDataset).toList(),
-                List.of(SourcelumeDatasetDto.TYPE_NAME));
+                List.of(RecordType.PROVENANCE_RECORD.typeName()));
         List<TrainingDataResponse> resolved = new ArrayList<>();
         for (TrainingDataEntryDto entry : entries) {
             RecordState state = states.get(entry.getDataset());
@@ -388,8 +373,11 @@ public class IngestResource {
         if (events == null) {
             return null;
         }
-        Map<String, RecordState> states =
-                lookUpRecords(events.stream().map(CustodyEventDto::getAgent).toList(), RecordType.entityTypeNames());
+        Map<String, RecordState> states = lookUpRecords(
+                events.stream().map(CustodyEventDto::getAgent).toList(),
+                java.util.Arrays.stream(RecordType.values())
+                        .map(RecordType::typeName)
+                        .toList());
         List<CustodyEventResponse> resolved = new ArrayList<>();
         for (CustodyEventDto event : events) {
             RecordState state = states.get(event.getAgent());
@@ -403,36 +391,27 @@ public class IngestResource {
         return resolved;
     }
 
-    /**
-     * Looks up the record each IRI denotes among the given entity types,
-     * as it stands now. An IRI listed more than once is looked up once.
-     *
-     * <p>The distinct IRIs are resolved together against the graph, one
-     * entity type at a time and several names per request. A failed
-     * lookup marks every IRI in that read instead of failing the read,
-     * and nothing further is asked of a backend that just failed.
-     */
+    /** Resolves distinct references through authoritative batch reads; a failure marks the whole read. */
     private Map<String, RecordState> lookUpRecords(List<String> iris, List<String> entityTypes) {
-        List<String> distinct = new ArrayList<>();
-        for (String iri : iris) {
-            if (!distinct.contains(iri)) {
-                distinct.add(iri);
-            }
-        }
+        var distinct = new java.util.LinkedHashSet<>(iris);
         Map<String, RecordState> states = new HashMap<>();
-        Map<String, RecordEntityDto> found;
+        Map<String, StoredRecord> found;
         try {
-            found = atlasAdapter.getRecordEntitiesByQualifiedNames(entityTypes, distinct);
-        } catch (AtlasAdapterException e) {
+            found = store.getAll(distinct);
+        } catch (StorageException e) {
             log.warn("Could not look up {} record reference(s): {}", distinct.size(), e.getMessage());
-            for (String iri : distinct) {
-                states.put(iri, RecordState.FAILED);
-            }
+            for (String iri : distinct) states.put(iri, RecordState.FAILED);
             return states;
         }
         for (String iri : distinct) {
-            RecordEntityDto entity = found.get(iri);
-            states.put(iri, new RecordState(entity == null ? null : entity.getRecordStatus(), false));
+            StoredRecord stored = found.get(iri);
+            if (stored == null
+                    || !entityTypes.contains(stored.record().type())
+                    || stored.record().validation() == null) {
+                states.put(iri, new RecordState(null, false));
+                continue;
+            }
+            states.put(iri, new RecordState(stored.record().validation().status(), false));
         }
         return states;
     }
@@ -443,33 +422,6 @@ public class IngestResource {
         /** The wire form of {@link #lookupFailed}: true, or absent. */
         Boolean lookupFailedFlag() {
             return lookupFailed ? Boolean.TRUE : null;
-        }
-    }
-
-    /**
-     * Atlas' Asset supertype requires a name on every entity write: an
-     * INCOMPLETE verdict keeps the placeholder derived from the record
-     * id, a VALIDATED verdict overwrites it with the mapped name.
-     */
-    private static String placeholderName(String recordId) {
-        int lastSegment = recordId.lastIndexOf('/');
-        String candidate = lastSegment >= 0 ? recordId.substring(lastSegment + 1) : recordId;
-        return candidate.isBlank() ? recordId : candidate;
-    }
-
-    /** Hex SHA-256 over the received bytes. */
-    private static String sha256Hex(byte[] received) {
-        try {
-            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(received);
-            StringBuilder hex = new StringBuilder(hash.length * 2);
-            for (byte b : hash) {
-                hex.append(Character.forDigit((b >> 4) & 0xF, 16));
-                hex.append(Character.forDigit(b & 0xF, 16));
-            }
-            return hex.toString();
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is not available", e);
         }
     }
 
@@ -515,13 +467,16 @@ public class IngestResource {
     }
 
     /** The 409 for an id that an existing entity keeps this submission from taking. */
-    private static Response conflict(String recordId, RecordEntityDto blocking) {
+    private static Response conflict(String recordId, RecordEnvelope blocking, RecordConflictException.Reason reason) {
+        RecordStatus status =
+                blocking.validation() == null ? null : blocking.validation().status();
+        String message = conflictReason(status);
+        if (reason == RecordConflictException.Reason.STALE_REVISION
+                || reason == RecordConflictException.Reason.ALREADY_EXISTS) {
+            message = "Record changed during submission; read it before retrying";
+        }
         return Response.status(409)
-                .entity(new ConflictResponse(
-                        recordId,
-                        blocking.getRecordStatus(),
-                        blocking.getTypeName(),
-                        conflictReason(blocking.getRecordStatus())))
+                .entity(new ConflictResponse(recordId, status, RecordType.entityTypeFor(blocking.type()), message))
                 .build();
     }
 
@@ -569,45 +524,36 @@ public class IngestResource {
             String validatedAt) {
 
         static RecordResponse of(
-                RecordEntityDto record,
+                RecordEnvelope record,
                 List<TrainingDataResponse> trainingData,
-                List<CustodyEventResponse> custodyChain) {
-            String issues = record.getValidationIssues();
-            if (RecordEntityDto.CLEARED_VALIDATION_ISSUES.equals(issues)) {
-                issues = null;
+                List<CustodyEventResponse> custodyChain,
+                ObjectMapper objectMapper) {
+            ValidationMetadata validation = record.validation();
+            String issues = null;
+            if (validation != null && !validation.issues().isEmpty()) {
+                try {
+                    issues = objectMapper.writeValueAsString(validation.issues());
+                } catch (JsonProcessingException e) {
+                    throw new IllegalStateException(e);
+                }
             }
-            String recordType = RecordType.fromEntityTypeName(record.getTypeName())
-                    .map(RecordType::typeName)
-                    .orElse(record.getTypeName());
-            String licenseId = null;
-            String sourceUri = null;
-            String modelUri = null;
-            String modelVersion = null;
-            String disclosure = null;
-            if (record instanceof SourcelumeDatasetDto dataset) {
-                licenseId = dataset.getLicenseId();
-                sourceUri = dataset.getSourceUri();
-            } else if (record instanceof SourcelumeModelDto model) {
-                modelUri = model.getModelUri();
-                modelVersion = model.getModelVersion();
-                disclosure = model.getDisclosure();
-            }
+            RecordAttributes attributes = record.attributes();
             return new RecordResponse(
-                    record.getQualifiedName(),
-                    recordType,
-                    record.getRecordStatus(),
-                    record.getName(),
-                    licenseId,
-                    sourceUri,
-                    modelUri,
-                    modelVersion,
-                    disclosure,
+                    record.id(),
+                    record.type(),
+                    validation == null ? null : validation.status(),
+                    attributes.name(),
+                    attributes.licenseId(),
+                    attributes.sourceUri(),
+                    attributes.modelUri(),
+                    attributes.modelVersion(),
+                    attributes.disclosure(),
                     trainingData,
                     custodyChain,
                     issues,
-                    record.getSha256(),
-                    record.getValidatedBy(),
-                    record.getValidatedAt());
+                    record.document() == null ? null : record.document().sha256(),
+                    validation == null ? null : validation.validatedBy(),
+                    validation == null ? null : validation.validatedAt());
         }
     }
 

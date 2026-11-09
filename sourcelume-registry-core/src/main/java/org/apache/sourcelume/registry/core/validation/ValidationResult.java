@@ -18,6 +18,7 @@ package org.apache.sourcelume.registry.core.validation;
 
 import java.util.Collections;
 import java.util.List;
+import org.apache.sourcelume.registry.spi.ValidationIssue;
 
 /**
  * The result of validating a ProvenanceRecord document.

@@ -29,16 +29,7 @@
   <packaging>jar</packaging>
   <name>Apache Sourcelume Registry - Quarkus Runtime</name>
 
-  <description>Quarkus runtime for the Apache Sourcelume Registry, layered on the
-        framework-free registry core (the AtlasAdapter SPI). On startup it
-        verifies the sourcelume-spec jar resources, loads the Sourcelume
-        typedefs, and registers them with Apache Atlas through a thin REST
-        adapter (JDK HttpClient, no atlas-client-v2 / atlas-intg dependency
-        tree). Readiness is exposed via SmallRye Health at /q/health/ready.
-
-        Per the dev-list consensus this module owns the only Quarkus
-        dependencies in the reactor: the Quarkus BOM is imported here, in the
-        module's own dependencyManagement. The parent POM stays framework-free.</description>
+  <description>Quarkus HTTP runtime and composition root for the Sourcelume Registry. Selects a metadata storage provider, manages initialization and shutdown, and exposes the record API and existing Atlas catalog views.</description>
 
   <dependencyManagement>
     <dependencies>
@@ -55,7 +46,16 @@
   </dependencyManagement>
 
   <dependencies>
-    <!-- Framework-free registry core: AtlasAdapter SPI + DTOs + typedefs -->
+    <dependency>
+      <groupId>org.apache.sourcelume</groupId>
+      <artifactId>sourcelume-registry-spi</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.sourcelume</groupId>
+      <artifactId>sourcelume-registry-spi-tck</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Ingest core, plugin contracts and the default Atlas distribution. -->
     <dependency>
       <groupId>org.apache.sourcelume</groupId>
       <artifactId>sourcelume-registry-core</artifactId>

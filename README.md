@@ -28,11 +28,13 @@ repo creation, and initial discussion") the codebase is organized as a
 | Module | Purpose |
 |---|---|
 | `sourcelume-registry-typedefs` | Backend type definitions (JSON resources) |
+| `sourcelume-registry-spi` | JDK-only metadata storage contracts and immutable value types |
+| `sourcelume-registry-spi-tck` | Reusable plugin contract tests and an in-memory test backend; test scope only |
 | `sourcelume-registry-common` | DTOs mapped from `sourcelume-spec`, Jakarta Validation annotations, exceptions, spec resource loader — framework-free (Jakarta API + Jackson only) |
-| `sourcelume-registry-core` | Backend-neutral `AtlasAdapter` SPI (API), the `RecordValidator` validation SPI, and the ingest SPI (`IngestService`) — no framework, no backend SDK dependencies |
+| `sourcelume-registry-core` | Framework-free ingest policy (`DefaultIngestService`), validation SPI (`RecordValidator`) and storage plugin selection (`PluginLoader`) |
 | `sourcelume-registry-validation-jsonschema` | Validation plugin: "json-schema" stage (networknt, draft 2020-12, format assertions) |
 | `sourcelume-registry-validation-shacl` | Validation plugin: "shacl" stage (Apache Jena, offline context inlining) |
-| `sourcelume-registry-atlas-adapter` | Thin REST `AtlasAdapter` implementation over the core SPI (JDK HttpClient), used by the Quarkus REST runtime |
+| `sourcelume-registry-atlas-adapter` | Atlas storage plugin, REST transport and mapping to the existing dataset/model entities; owns its schema initialization |
 | `sourcelume-registry-runtime-quarkus` | Quarkus REST runtime: dataset and type REST APIs (`/api/v1/datasets`, `/api/v1/types`), ingest endpoints (`POST /records`, `GET /records/{id}`, `GET /records/{id}/document`), pre-flight validation endpoint, startup bootstrap (spec verification + typedef registration), SmallRye Health readiness, Docker packaging |
 
 Runtime modules build on the framework-free core as separate modules and own
@@ -42,6 +44,9 @@ module only). Validation follows the same principle: the core defines the
 (networknt, Jena) — see [docs/validation.md](docs/validation.md) for the
 architecture, the shipped stages, and the parity rationale against the
 Python reference validator (`sourcelume-spec` `tools/validate.py`).
+
+The storage interfaces, entry points, Atlas mapping and operational assumptions
+are described in [docs/storage-spi.md](docs/storage-spi.md).
 
 ## Building
 
@@ -75,13 +80,14 @@ docker compose up -d
 
 ### Health & Observability
 
-- Readiness (Atlas connectivity): `http://localhost:8082/q/health/ready`
+- Readiness (selected storage plugin and initialization): `http://localhost:8082/q/health/ready`
 - Liveness probe: `http://localhost:8082/q/health/live`
 - Prometheus metrics: `http://localhost:8082/q/metrics`
 - OpenAPI document: `http://localhost:8082/q/openapi`
 - Swagger UI: `http://localhost:8082/q/swagger-ui`
 
-Configuration lives under the `sourcelume.atlas.*` properties
+Select a storage provider with `sourcelume.storage.provider` (default `atlas`).
+Atlas connection settings remain under `sourcelume.atlas.*`
 (`sourcelume-registry-runtime-quarkus/src/main/resources/application.properties`).
 
 ### REST API Endpoints

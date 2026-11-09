@@ -16,19 +16,19 @@
  */
 package org.apache.sourcelume.registry.runtime.quarkus.test;
 
-import io.quarkus.test.Mock;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Alternative;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter;
+import org.apache.sourcelume.registry.atlas.adapter.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
-import org.apache.sourcelume.registry.common.dto.RecordStatus;
-import org.apache.sourcelume.registry.core.AtlasAdapter;
-import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
+import org.apache.sourcelume.registry.spi.RecordStatus;
 
-@Mock
+@Alternative
 @ApplicationScoped
 public class TestAtlasAdapter implements AtlasAdapter {
 

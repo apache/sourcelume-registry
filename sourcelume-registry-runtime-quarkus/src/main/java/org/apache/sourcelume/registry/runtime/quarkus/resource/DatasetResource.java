@@ -25,10 +25,10 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter;
+import org.apache.sourcelume.registry.atlas.adapter.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
-import org.apache.sourcelume.registry.core.AtlasAdapter;
-import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.runtime.quarkus.BackendFailureMapper;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
@@ -56,11 +56,16 @@ import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
 @Produces(MediaType.APPLICATION_JSON)
 public class DatasetResource {
 
-    private final AtlasAdapter atlasAdapter;
+    private final java.util.function.Supplier<AtlasAdapter> atlasAdapter;
 
     @Inject
-    public DatasetResource(AtlasAdapter atlasAdapter) {
-        this.atlasAdapter = atlasAdapter;
+    public DatasetResource(
+            org.apache.sourcelume.registry.runtime.quarkus.storage.AtlasCompatibilityProducer compatibility) {
+        this.atlasAdapter = compatibility::adapter;
+    }
+
+    DatasetResource(AtlasAdapter adapter) {
+        this.atlasAdapter = () -> adapter;
     }
 
     /**
@@ -135,7 +140,7 @@ public class DatasetResource {
         }
         // A GUID can point at any record entity; the dataset API only
         // answers for dataset entities.
-        RecordEntityDto stored = atlasAdapter.getRecordEntityByGuid(guid);
+        RecordEntityDto stored = atlasAdapter.get().getRecordEntityByGuid(guid);
         if (!(stored instanceof SourcelumeDatasetDto)) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(new ErrorResponse("Dataset not found for guid: " + guid))
@@ -188,7 +193,7 @@ public class DatasetResource {
 
     private SourcelumeDatasetDto getDatasetByQualifiedName(String qualifiedName) {
         RecordEntityDto stored =
-                atlasAdapter.getRecordEntityByQualifiedName(SourcelumeDatasetDto.TYPE_NAME, qualifiedName);
+                atlasAdapter.get().getRecordEntityByQualifiedName(SourcelumeDatasetDto.TYPE_NAME, qualifiedName);
         return stored instanceof SourcelumeDatasetDto ? (SourcelumeDatasetDto) stored : null;
     }
 

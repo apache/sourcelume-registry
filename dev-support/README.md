@@ -397,3 +397,18 @@ The API version pin for the docker client lives in
 `sourcelume-registry-runtime-quarkus/src/test/resources/docker-java.properties`.
 If compose output is needed while debugging, add
 `-Dquarkus.log.console.level=INFO`.
+
+### Testing against an existing Atlas instance
+
+To run the integration tests against an isolated Atlas instance that is already
+running, supply its URL. This bypasses the Compose lifecycle manager:
+
+```bash
+mvn verify -Pintegration-tests -Dsourcelume.it.atlas-url=http://localhost:21000
+```
+
+`SOURCELUME_IT_ATLAS_USER` and `SOURCELUME_IT_ATLAS_PASSWORD` override the local
+Atlas development defaults. The suite registers/updates Sourcelume type
+definitions and writes uniquely named test records; use a disposable instance.
+The ordinary HTTP tests explicitly select their mock profile, so the Atlas
+integration profile always uses the real storage provider.
