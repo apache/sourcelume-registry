@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
+import java.nio.charset.StandardCharsets;
 import org.apache.sourcelume.registry.core.validation.ValidatorChain;
 import org.junit.jupiter.api.Test;
 
@@ -129,6 +130,32 @@ class RecordValidationResourceTest {
                 .body("issues.size()", is(1))
                 .body("issues[0].validatorId", equalTo("json-schema"))
                 .body("issues[0].severity", equalTo("VIOLATION"));
+    }
+
+    /**
+     * The pre-flight must agree with POST /records: bytes a strict UTF-8
+     * decoder cannot map answer 400 here as well, not a replaced-text
+     * record that could validate green and then fail on publish. The bad
+     * bytes sit inside a string value, where lenient decoding would
+     * still leave parseable JSON.
+     */
+    @Test
+    void bodyThatIsNotUtf8Returns400() {
+        byte[] head = "{\"id\":\"https://example.org/records/not-utf8\",\"name\":\"a".getBytes(StandardCharsets.UTF_8);
+        byte[] tail = "b\"}".getBytes(StandardCharsets.UTF_8);
+        byte[] body = new byte[head.length + 2 + tail.length];
+        System.arraycopy(head, 0, body, 0, head.length);
+        body[head.length] = (byte) 0xC0;
+        body[head.length + 1] = (byte) 0xC1;
+        System.arraycopy(tail, 0, body, head.length + 2, tail.length);
+
+        given().contentType(ContentType.JSON)
+                .body(body)
+                .when()
+                .post("/records/validate")
+                .then()
+                .statusCode(400)
+                .body("message", equalTo("Request body is not valid UTF-8"));
     }
 
     @Test

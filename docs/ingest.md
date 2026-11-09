@@ -43,9 +43,10 @@ on the model entity — and the dataset records themselves stay untouched.
 `GET /records/{id}` on a VALIDATED model record lists each `trainingData`
 entry with the referenced dataset record's current `recordStatus`, absent
 when the registry holds no record for that IRI (`lookupFailed: true`
-instead when the backend could not be asked). Each distinct dataset is
-one backend lookup, so the read gets slower the more datasets a record
-lists.
+instead when the backend could not be asked). The distinct datasets are
+resolved together against the graph, several names per request, so a
+long list does not become one call per dataset. A failed lookup marks
+every dataset in that read and does not try again.
 
 A `ProvenanceRecord`'s `custodyChain` agents are resolved the same way.
 An agent may be the `id` of any record — a dataset, or a model that
@@ -56,8 +57,9 @@ answers with that one record whatever store holds it. `GET
 event with that record's current `recordStatus`, absent when the IRI
 denotes no record (`lookupFailed: true` when the backend could not be
 asked). The lookup goes one hop and reports status only; nothing is
-stored on either record. Each distinct agent is one backend lookup per
-record store.
+stored on either record. The distinct agents are resolved together
+against the graph, one batch of requests per record store. A failed
+lookup marks every agent in that read.
 
 A submission whose `type` is absent or unknown still gets its verdict:
 it fails validation (there is no schema for it) and lands as
@@ -118,7 +120,7 @@ An id denotes one record. Records are written only via `POST /records`; `/api/v1
 |---|---|
 | `POST /records` (JSON-LD body) | `201` new record, `200` resubmission under the same record type — body: `qualifiedName`, `type`, `recordStatus`, `sha256`, `validatedBy`, `validatedAt`, and for `INCOMPLETE` the `validationIssues` |
 | `POST /records` for an id that is already VALIDATED or stored under another entity type | `409` — the stored record is unchanged; body: `qualifiedName`, `recordStatus` (absent for a plain dataset), `entityType` (the store holding the id), `reason` |
-| `POST /records` without a usable `@id`, or unparseable | `400` |
+| `POST /records` without a usable `@id`, unparseable, or not valid UTF-8 | `400` |
 | `POST /records` with an unsupported content type | `415` |
 | `GET /records/{id}` | `200` record view: `type`, status, the type's mapped attributes, `trainingData` with each dataset's status for a VALIDATED model record, `custodyChain` with each agent's record status for a VALIDATED dataset record, and for INCOMPLETE the issues + verdict context / `404` |
 | `GET /records/{id}/document` | `200` — the stored JSON-LD document, byte-identical to the submission, as `application/ld+json`; the record's `sha256` repeats as `ETag`. For any verdict, VALIDATED or INCOMPLETE / `404` — no record for the id, or the entity under it carries no document |

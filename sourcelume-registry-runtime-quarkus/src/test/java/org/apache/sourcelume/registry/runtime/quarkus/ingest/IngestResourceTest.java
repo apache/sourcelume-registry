@@ -32,7 +32,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
 import org.apache.sourcelume.registry.common.dto.RecordStatus;
-import org.apache.sourcelume.registry.common.dto.RecordType;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.common.dto.SourcelumeModelDto;
 import org.apache.sourcelume.registry.core.AtlasAdapter;
@@ -98,6 +97,7 @@ class IngestResourceTest {
         fake.unreachable.clear();
         fake.writes = 0;
         fake.deletes = 0;
+        fake.bulkLookups = 0;
     }
 
     @Test
@@ -309,6 +309,72 @@ class IngestResourceTest {
         assertEquals(400, response.getStatus());
     }
 
+    /**
+     * Bytes a strict UTF-8 decoder cannot map would otherwise be replaced
+     * by U+FFFD: the stored document would stop matching the digest over
+     * the received bytes. The bad bytes sit inside a string value of an
+     * otherwise valid record, where a lenient decode would still parse
+     * and store — so only the charset check refuses this body.
+     */
+    @Test
+    void bodyThatIsNotUtf8IsRejected() {
+        var response = resource.submit(recordWithInvalidUtf8InName());
+
+        assertEquals(400, response.getStatus());
+        assertEquals(
+                "Request body is not valid UTF-8", ((IngestResource.ErrorResponse) response.getEntity()).message());
+    }
+
+    /** An invalid byte anywhere is enough, not only inside the JSON text. */
+    @Test
+    void invalidUtf8OutsideTheJsonIsRejected() {
+        byte[] record = VALID_RECORD.getBytes(StandardCharsets.UTF_8);
+        byte[] body = new byte[record.length + 1];
+        body[0] = (byte) 0xFF; // opens no UTF-8 sequence
+        System.arraycopy(record, 0, body, 1, record.length);
+
+        var response = resource.submit(body);
+
+        assertEquals(400, response.getStatus());
+        assertEquals(
+                "Request body is not valid UTF-8", ((IngestResource.ErrorResponse) response.getEntity()).message());
+    }
+
+    /**
+     * A UTF-8 BOM decodes fine but is not a JSON document start (and
+     * RFC 8259 forbids senders from adding one), so the body fails the
+     * same 400 as other unparseable input — through the JSON parse, not
+     * the charset check.
+     */
+    @Test
+    void bomPrefixedBodyIsRejected() {
+        byte[] bom = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        byte[] record = VALID_RECORD.getBytes(StandardCharsets.UTF_8);
+        byte[] body = new byte[bom.length + record.length];
+        System.arraycopy(bom, 0, body, 0, bom.length);
+        System.arraycopy(record, 0, body, bom.length, record.length);
+
+        var response = resource.submit(body);
+
+        assertEquals(400, response.getStatus());
+        assertTrue(((IngestResource.ErrorResponse) response.getEntity())
+                .message()
+                .startsWith("Record is not parseable JSON"));
+    }
+
+    /** Two bytes that open no UTF-8 sequence (0xC0/0xC1 are overlong leads), spliced inside the "name" string value. */
+    private static byte[] recordWithInvalidUtf8InName() {
+        int inside = VALID_RECORD.indexOf("endpoint");
+        byte[] head = VALID_RECORD.substring(0, inside).getBytes(StandardCharsets.UTF_8);
+        byte[] tail = VALID_RECORD.substring(inside).getBytes(StandardCharsets.UTF_8);
+        byte[] body = new byte[head.length + 2 + tail.length];
+        System.arraycopy(head, 0, body, 0, head.length);
+        body[head.length] = (byte) 0xC0;
+        body[head.length + 1] = (byte) 0xC1;
+        System.arraycopy(tail, 0, body, head.length + 2, tail.length);
+        return body;
+    }
+
     @Test
     void invalidUtf8BodyIsRejected() {
         // Two bytes that are not a valid UTF-8 sequence anywhere in the body.
@@ -477,40 +543,48 @@ class IngestResourceTest {
 
         assertEquals(2, body.trainingData().size());
         body.trainingData().forEach(entry -> assertEquals(RecordStatus.VALIDATED, entry.recordStatus()));
-        assertEquals(1, fake.lookups.get(RECORD_ID));
+        assertEquals(1, fake.bulkLookups);
+        assertNull(fake.lookups.get(RECORD_ID), "the repeated dataset is not fetched one IRI at a time");
     }
 
-    /** A dataset the backend cannot be asked about marks only its own entry; the model record stays readable. */
+    /**
+     * The references of one read are one search. When that search fails, every
+     * entry is marked and the model record stays readable.
+     */
     @Test
-    void aFailedDatasetLookupMarksOnlyItsEntry() {
+    void aFailedDatasetLookupMarksEveryEntry() {
         resource.submit(VALID_RECORD.getBytes(StandardCharsets.UTF_8));
         resource.submit(modelRecord("complete", RECORD_ID, UNREGISTERED_DATASET).getBytes(StandardCharsets.UTF_8));
         fake.unreachable.add(UNREGISTERED_DATASET);
+        fake.bulkLookups = 0;
 
         var response = resource.status(MODEL_RECORD_ID);
 
         assertEquals(200, response.getStatus());
         List<IngestResource.TrainingDataResponse> trainingData =
                 ((IngestResource.RecordResponse) response.getEntity()).trainingData();
-        assertEquals(RecordStatus.VALIDATED, trainingData.get(0).recordStatus());
-        assertNull(trainingData.get(0).lookupFailed());
-        assertNull(trainingData.get(1).recordStatus());
-        assertEquals(Boolean.TRUE, trainingData.get(1).lookupFailed());
+        trainingData.forEach(entry -> {
+            assertNull(entry.recordStatus());
+            assertEquals(Boolean.TRUE, entry.lookupFailed());
+        });
+        assertEquals(1, fake.bulkLookups);
     }
 
-    /** After a failed lookup the backend is not asked again: the remaining datasets are marked without waiting. */
+    /** A failed search is the only request: the remaining datasets are not asked about on their own. */
     @Test
     void datasetsAfterAFailedLookupAreMarkedWithoutAsking() {
         resource.submit(modelRecord("complete", UNREGISTERED_DATASET, RECORD_ID).getBytes(StandardCharsets.UTF_8));
         fake.unreachable.add(UNREGISTERED_DATASET);
         fake.lookups.clear();
+        fake.bulkLookups = 0;
 
         List<IngestResource.TrainingDataResponse> trainingData = ((IngestResource.RecordResponse)
                         resource.status(MODEL_RECORD_ID).getEntity())
                 .trainingData();
 
         trainingData.forEach(entry -> assertEquals(Boolean.TRUE, entry.lookupFailed()));
-        assertNull(fake.lookups.get(RECORD_ID), "no lookup after the backend failed");
+        assertEquals(1, fake.bulkLookups);
+        assertNull(fake.lookups.get(RECORD_ID), "no per-IRI lookup after the backend failed");
     }
 
     /** Only a VALIDATED model record's references are resolved; an INCOMPLETE one is not a published claim. */
@@ -579,7 +653,7 @@ class IngestResourceTest {
         assertEquals(RecordStatus.INCOMPLETE, after.custodyChain().get(0).recordStatus());
     }
 
-    /** An agent named in several events is looked up once (in each record store) and reported for each. */
+    /** An agent named in several events is looked up once for the read and reported for each. */
     @Test
     void anAgentNamedTwiceIsLookedUpOncePerStore() {
         resource.submit(datasetRecord(UPSTREAM_RECORD_ID, EXTERNAL_AGENT).getBytes(StandardCharsets.UTF_8));
@@ -592,7 +666,8 @@ class IngestResourceTest {
 
         assertEquals(2, body.custodyChain().size());
         body.custodyChain().forEach(event -> assertEquals(RecordStatus.VALIDATED, event.recordStatus()));
-        assertEquals(RecordType.entityTypeNames().size(), fake.lookups.get(UPSTREAM_RECORD_ID));
+        assertEquals(1, fake.bulkLookups);
+        assertNull(fake.lookups.get(UPSTREAM_RECORD_ID), "the repeated agent is not fetched once per store");
     }
 
     /** One IRI denotes one record of any type: an agent that is a model record reports that record's status. */
@@ -621,23 +696,25 @@ class IngestResourceTest {
         assertNull(body.trainingData().get(0).recordStatus());
     }
 
-    /** An agent the backend cannot be asked about marks only its own event; the dataset record stays readable. */
+    /** The agents of one read are one search. When that search fails, every event is marked. */
     @Test
-    void aFailedAgentLookupMarksOnlyItsEvent() {
+    void aFailedAgentLookupMarksEveryEvent() {
         resource.submit(datasetRecord(UPSTREAM_RECORD_ID, EXTERNAL_AGENT).getBytes(StandardCharsets.UTF_8));
         resource.submit(
                 datasetRecord(RECORD_ID, UPSTREAM_RECORD_ID, EXTERNAL_AGENT).getBytes(StandardCharsets.UTF_8));
         fake.unreachable.add(EXTERNAL_AGENT);
+        fake.bulkLookups = 0;
 
         var response = resource.status(RECORD_ID);
 
         assertEquals(200, response.getStatus());
         List<IngestResource.CustodyEventResponse> custodyChain =
                 ((IngestResource.RecordResponse) response.getEntity()).custodyChain();
-        assertEquals(RecordStatus.VALIDATED, custodyChain.get(0).recordStatus());
-        assertNull(custodyChain.get(0).lookupFailed());
-        assertNull(custodyChain.get(1).recordStatus());
-        assertEquals(Boolean.TRUE, custodyChain.get(1).lookupFailed());
+        custodyChain.forEach(event -> {
+            assertNull(event.recordStatus());
+            assertEquals(Boolean.TRUE, event.lookupFailed());
+        });
+        assertEquals(1, fake.bulkLookups);
     }
 
     /** Only a VALIDATED dataset record's agents are resolved; an INCOMPLETE one is not a published claim. */
@@ -728,6 +805,8 @@ class IngestResourceTest {
         final java.util.Set<String> unreachable = new java.util.HashSet<>();
         int writes;
         int deletes;
+        /** Bulk reference lookups. One read is one call, however many IRIs it names. */
+        int bulkLookups;
 
         @Override
         public boolean isServerReady() {
@@ -758,6 +837,31 @@ class IngestResourceTest {
                 throw new AtlasAdapterException("Atlas unreachable", 503, null);
             }
             return store.get(new StoreKey(entityType, qualifiedName));
+        }
+
+        @Override
+        public java.util.Map<String, RecordEntityDto> getRecordEntitiesByQualifiedNames(
+                List<String> entityTypes, List<String> qualifiedNames) {
+            bulkLookups++;
+            java.util.Map<String, RecordEntityDto> found = new java.util.LinkedHashMap<>();
+            java.util.List<String> seen = new java.util.ArrayList<>();
+            for (String name : qualifiedNames) {
+                if (name == null || seen.contains(name)) {
+                    continue;
+                }
+                seen.add(name);
+                if (unreachable.contains(name)) {
+                    throw new AtlasAdapterException("Atlas unreachable", 503, null);
+                }
+                for (String entityType : entityTypes) {
+                    RecordEntityDto entity = store.get(new StoreKey(entityType, name));
+                    if (entity != null) {
+                        found.put(name, entity);
+                        break;
+                    }
+                }
+            }
+            return found;
         }
 
         @Override

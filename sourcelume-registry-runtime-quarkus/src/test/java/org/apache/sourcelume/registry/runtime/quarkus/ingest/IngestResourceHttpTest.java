@@ -55,6 +55,30 @@ class IngestResourceHttpTest {
                 .statusCode(400);
     }
 
+    /**
+     * The bad bytes sit inside a string value of an otherwise valid
+     * record: a lenient decode would still parse and store the record,
+     * so only the strict charset check answers 400.
+     */
+    @Test
+    void bodyThatIsNotUtf8IsRejectedOverHttp() {
+        byte[] head = "{\"id\":\"https://example.org/records/not-utf8\",\"name\":\"a".getBytes(StandardCharsets.UTF_8);
+        byte[] tail = "b\"}".getBytes(StandardCharsets.UTF_8);
+        byte[] body = new byte[head.length + 2 + tail.length];
+        System.arraycopy(head, 0, body, 0, head.length);
+        body[head.length] = (byte) 0xC0;
+        body[head.length + 1] = (byte) 0xC1;
+        System.arraycopy(tail, 0, body, head.length + 2, tail.length);
+
+        given().contentType(ContentType.JSON)
+                .body(body)
+                .when()
+                .post("/records")
+                .then()
+                .statusCode(400)
+                .body("message", equalTo("Request body is not valid UTF-8"));
+    }
+
     @Test
     void invalidUtf8BodyIsRejectedOverHttp() {
         byte[] body = "{\"id\":\"https://sourcelume.apache.org/records/http-utf8\",".getBytes(StandardCharsets.UTF_8);
