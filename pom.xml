@@ -32,29 +32,15 @@
   <packaging>pom</packaging>
   <name>Apache Sourcelume Registry</name>
 
-  <description>Apache Sourcelume Registry — framework-free core.
-
-        Per the dev-list consensus (September 2026, thread "Apache Sourcelume
-        Registry repo creation, and initial discussion") the repository is
-        organized as a framework-independent Core/API with framework-specific
-        Runtime modules layered on top:
-
-        - sourcelume-registry-typedefs: backend type definitions (JSON resources)
-        - sourcelume-registry-common: DTOs mapped from sourcelume-spec, Jakarta
-          Validation annotations, exceptions, spec resource loader — no
-          framework dependencies, Jakarta API + Jackson only
-        - sourcelume-registry-core: backend-neutral adapter SPI (AtlasAdapter)
-          exposing only Sourcelume types; no backend SDK types in the interface
-
-        Runtime modules (for example a Quarkus runtime providing a thin REST
-        AtlasAdapter implementation) build on this core as separate modules.
-        Java 21 baseline.</description>
+  <description>Apache Sourcelume Registry: a framework-free ingest core, a JDK-only metadata storage SPI, classpath storage and validation plugins, and a Quarkus HTTP runtime. Java 21 baseline.</description>
 
   <modules>
     <module>sourcelume-registry-typedefs</module>
+    <module>sourcelume-registry-spi</module>
+    <module>sourcelume-registry-spi-tck</module>
     <module>sourcelume-registry-common</module>
     <module>sourcelume-registry-core</module>
-    <!-- Atlas REST adapter implementing the core AtlasAdapter SPI. -->
+    <!-- Atlas storage plugin, discovered through RegistryPluginProvider. -->
     <module>sourcelume-registry-atlas-adapter</module>
     <!-- Validation plugins: discovered via the core RecordValidator SPI
              (ServiceLoader), each owning its validation machinery. -->
@@ -149,6 +135,16 @@
       <dependency>
         <groupId>org.apache.sourcelume</groupId>
         <artifactId>sourcelume-registry-typedefs</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.sourcelume</groupId>
+        <artifactId>sourcelume-registry-spi-tck</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.sourcelume</groupId>
+        <artifactId>sourcelume-registry-spi</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

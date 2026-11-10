@@ -16,32 +16,7 @@
  */
 package org.apache.sourcelume.registry.core.ingest;
 
-import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
-
-/**
- * SPI for the ingest pipeline step that turns a submitted record into
- * a verdict: validate the record's raw JSON-LD, map a conforming record
- * onto its entity attributes, and store the entity with its verdict —
- * {@link org.apache.sourcelume.registry.common.dto.RecordStatus#VALIDATED}
- * or {@link org.apache.sourcelume.registry.common.dto.RecordStatus#INCOMPLETE}.
- *
- * <p>The REST API calls this step synchronously on submission, so no
- * record reaches the store without a verdict. Keeping the step behind
- * an SPI lets other frontends (a CLI, or a queue consumer the day a
- * slow validation step makes a real queue worth its price) run the
- * same pipeline.
- */
+/** Validates and conditionally persists a submission through the selected storage plugin. */
 public interface IngestService {
-
-    /**
-     * Processes one submitted record: validates its rawJsonLd and stores
-     * the entity with its verdict — VALIDATED (mapped attributes) or
-     * INCOMPLETE (validation issues on the entity). The raw document is
-     * stored byte-identical, under the entity type the record's own
-     * {@code type} term selects.
-     *
-     * @param submitted the submitted record, never null
-     * @return the outcome of the run, never null
-     */
-    IngestResult process(RecordEntityDto submitted);
+    IngestResult process(RecordSubmission submitted);
 }

@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test;
  * guaranteed-closed port, so this is deterministic in CI without a backend).
  */
 @QuarkusTest
+@io.quarkus.test.junit.TestProfile(org.apache.sourcelume.registry.runtime.quarkus.test.StubStorageProfile.class)
 class AtlasReadinessCheckTest {
 
     @Test

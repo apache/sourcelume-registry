@@ -44,8 +44,8 @@ on the model entity — and the dataset records themselves stay untouched.
 entry with the referenced dataset record's current `recordStatus`, absent
 when the registry holds no record for that IRI (`lookupFailed: true`
 instead when the backend could not be asked). The distinct datasets are
-resolved together against the graph, several names per request, so a
-long list does not become one call per dataset. A failed lookup marks
+resolved together through the storage SPI. The Atlas plugin reads the
+graph in batches, so a long list does not become one call per dataset. A failed lookup marks
 every dataset in that read and does not try again.
 
 A `ProvenanceRecord`'s `custodyChain` agents are resolved the same way.
@@ -57,8 +57,8 @@ answers with that one record whatever store holds it. `GET
 event with that record's current `recordStatus`, absent when the IRI
 denotes no record (`lookupFailed: true` when the backend could not be
 asked). The lookup goes one hop and reports status only; nothing is
-stored on either record. The distinct agents are resolved together
-against the graph, one batch of requests per record store. A failed
+stored on either record. The distinct agents use the same batch-read
+contract; Atlas sends batches of requests per entity type. A failed
 lookup marks every agent in that read.
 
 A submission whose `type` is absent or unknown still gets its verdict:
@@ -161,3 +161,16 @@ round runs against a real Apache Atlas via Testcontainers
 (`mvn verify -Pintegration-tests`, see dev-support/README.md): submit,
 verdict, resubmission cycle, duplicate rejection, and the bootstrap's
 idempotency on an existing type.
+
+## Metadata storage
+
+The common ingest path now calls `RecordStore` through the selected metadata
+plugin. `DefaultIngestService` owns validation and revision selection; the plugin
+owns the authoritative condition check and persistence. See
+[storage-spi.md](storage-spi.md) for the call flow and Atlas mapping.
+
+The HTTP API retains its validation status codes, top-level `recordStatus`,
+revisionless correction behavior and document retrieval route. A document above
+the selected store's size limit returns `413`. An ambiguous Atlas write returns
+`503` with `X-Sourcelume-Error: UNKNOWN_WRITE`; it requires reconciliation rather
+than an automatic retry. Atlas deployments require a single active writer.

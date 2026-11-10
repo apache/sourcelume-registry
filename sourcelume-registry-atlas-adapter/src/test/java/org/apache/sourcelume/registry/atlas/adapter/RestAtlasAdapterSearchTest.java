@@ -35,11 +35,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
+import org.apache.sourcelume.registry.atlas.adapter.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
-import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.common.dto.SourcelumeModelDto;
-import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
+import org.apache.sourcelume.registry.spi.RecordStatus;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -102,8 +102,10 @@ class RestAtlasAdapterSearchTest {
         // Without the explicit attributes list Atlas returns headers only
         // and callers would see empty documents.
         JsonNode attributes = body.path("attributes");
-        assertTrue(attributes.isArray() && attributes.size() == 11, "the lifecycle attributes must be requested");
-        for (String wanted : new String[] {"rawJsonLd", "recordStatus"}) {
+        assertTrue(attributes.isArray() && attributes.size() == 16, "the lifecycle attributes must be requested");
+        for (String wanted :
+                new String[] {"rawJsonLd", "recordStatus", "registryRevision", "recordAttachments", "recordAttributes"
+                }) {
             boolean listed = false;
             for (JsonNode attribute : attributes) {
                 listed = listed || wanted.equals(attribute.asText());
@@ -466,5 +468,39 @@ class RestAtlasAdapterSearchTest {
                 return 0;
             }
         };
+    }
+
+    @Test
+    void facetFiltersAreSentToAtlasBeforeTheResultLimit() throws Exception {
+        serve(200, "{\"entities\":[]}");
+        var facets = org.apache.sourcelume.registry.spi.RecordFacets.builder()
+                .add(org.apache.sourcelume.registry.spi.RecordFacet.TRAINING_DATASET, "urn:data:A")
+                .add(org.apache.sourcelume.registry.spi.RecordFacet.TRAINING_DATASET, "urn:data:B")
+                .add(org.apache.sourcelume.registry.spi.RecordFacet.CREATOR_NAME, "Team A")
+                .build();
+        adapter.findRecordEntities(
+                "sourcelume_model",
+                org.apache.sourcelume.registry.spi.SearchQuery.builder()
+                        .type("TrainingProvenanceRecord")
+                        .status(RecordStatus.VALIDATED)
+                        .limit(1)
+                        .facets(facets)
+                        .build());
+        JsonNode request = objectMapper.readTree(lastRequestBody.get());
+        assertEquals(1, request.path("limit").asInt());
+        JsonNode filter = request.path("entityFilters");
+        assertEquals("AND", filter.path("condition").asText());
+        assertEquals(3, filter.path("criterion").size());
+        JsonNode datasets = filter.path("criterion").get(1);
+        assertEquals("OR", datasets.path("condition").asText());
+        assertEquals(2, datasets.path("criterion").size());
+        assertEquals(
+                "recordFacetIndex",
+                datasets.path("criterion").get(0).path("attributeName").asText());
+        assertEquals(
+                "contains", datasets.path("criterion").get(0).path("operator").asText());
+        assertEquals(
+                AtlasFacetIndex.token(org.apache.sourcelume.registry.spi.RecordFacet.TRAINING_DATASET, "urn:data:A"),
+                datasets.path("criterion").get(0).path("attributeValue").asText());
     }
 }

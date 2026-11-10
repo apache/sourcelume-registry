@@ -25,7 +25,7 @@ import jakarta.ws.rs.core.Response;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.http.HttpTimeoutException;
-import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
+import org.apache.sourcelume.registry.atlas.adapter.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.runtime.quarkus.ingest.IngestResource.ErrorResponse;
 import org.junit.jupiter.api.Test;
 

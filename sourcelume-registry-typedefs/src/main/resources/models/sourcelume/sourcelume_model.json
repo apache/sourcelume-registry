@@ -93,13 +93,53 @@
           "isIndexable": false,
           "isOptional": true,
           "isUnique": false
+        },
+        {
+          "name": "registryRevision",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isOptional": true,
+          "isIndexable": false,
+          "isUnique": false
+        },
+        {
+          "name": "recordAttachments",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isOptional": true,
+          "isIndexable": false,
+          "isUnique": false
+        },
+        {
+          "name": "recordAttributes",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isOptional": true,
+          "isIndexable": false,
+          "isUnique": false
+        },
+        {
+          "name": "recordFacets",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isOptional": true,
+          "isIndexable": false,
+          "isUnique": false
+        },
+        {
+          "name": "recordFacetIndex",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isOptional": true,
+          "isIndexable": true,
+          "isUnique": false
         }
       ]
     },
     {
       "name": "sourcelume_model",
       "typeVersion": "1.0",
-      "description": "Entity for a model described by a stored TrainingProvenanceRecord: the model producer's claim of which datasets the model was trained on. Carries the same ingest lifecycle attributes as sourcelume_dataset plus the mapped model attributes. The referenced datasets are not attributes — their provenance state is resolved at read time, per the spec design. qualifiedName (the record IRI) and name are inherited from Asset; a model is not a DataSet.",
+      "description": "Entity for a model described by a stored TrainingProvenanceRecord: the model producer's claim of which datasets the model was trained on. Carries the same ingest lifecycle attributes as sourcelume_dataset plus the mapped model attributes. The referenced datasets are not attributes \u2014 their provenance state is resolved at read time, per the spec design. qualifiedName (the record IRI) and name are inherited from Asset; a model is not a DataSet.",
       "superTypes": [
         "Asset"
       ],
@@ -180,6 +220,46 @@
           "cardinality": "SINGLE",
           "isIndexable": false,
           "isOptional": true,
+          "isUnique": false
+        },
+        {
+          "name": "registryRevision",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isOptional": true,
+          "isIndexable": false,
+          "isUnique": false
+        },
+        {
+          "name": "recordAttachments",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isOptional": true,
+          "isIndexable": false,
+          "isUnique": false
+        },
+        {
+          "name": "recordAttributes",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isOptional": true,
+          "isIndexable": false,
+          "isUnique": false
+        },
+        {
+          "name": "recordFacets",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isOptional": true,
+          "isIndexable": false,
+          "isUnique": false
+        },
+        {
+          "name": "recordFacetIndex",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isOptional": true,
+          "isIndexable": true,
           "isUnique": false
         }
       ]

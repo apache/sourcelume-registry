@@ -50,6 +50,7 @@ import org.junit.jupiter.api.Test;
  * the committed snapshot so API changes show up as diffs in review.
  */
 @QuarkusTest
+@io.quarkus.test.junit.TestProfile(org.apache.sourcelume.registry.runtime.quarkus.test.StubStorageProfile.class)
 class OpenApiDocumentTest {
 
     /** The committed contract, relative to this module. */

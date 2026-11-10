@@ -34,8 +34,8 @@ import java.util.Map;
 import org.apache.sourcelume.registry.common.dto.RecordType;
 import org.apache.sourcelume.registry.common.spec.SpecResourceLoader;
 import org.apache.sourcelume.registry.core.validation.RecordValidator;
-import org.apache.sourcelume.registry.core.validation.ValidationIssue;
 import org.apache.sourcelume.registry.core.validation.ValidationResult;
+import org.apache.sourcelume.registry.spi.ValidationIssue;
 
 /**
  * Structural validation stage of the RecordValidator chain: checks the raw

@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import org.apache.sourcelume.registry.spi.RecordStatus;
 import org.junit.jupiter.api.Test;
 
 /**

@@ -24,8 +24,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.apache.sourcelume.registry.common.spec.SpecResourceLoader;
-import org.apache.sourcelume.registry.core.validation.ValidationIssue;
 import org.apache.sourcelume.registry.core.validation.ValidationResult;
+import org.apache.sourcelume.registry.spi.ValidationIssue;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 

@@ -22,11 +22,12 @@ import static org.hamcrest.Matchers.equalTo;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
-import org.apache.sourcelume.registry.core.AtlasAdapter;
 import org.junit.jupiter.api.Test;
 
 @QuarkusTest
+@io.quarkus.test.junit.TestProfile(org.apache.sourcelume.registry.runtime.quarkus.test.StubStorageProfile.class)
 class DatasetResourceTest {
 
     @Inject

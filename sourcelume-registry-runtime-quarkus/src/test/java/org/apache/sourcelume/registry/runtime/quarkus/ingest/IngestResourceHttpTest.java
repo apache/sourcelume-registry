@@ -33,7 +33,19 @@ import org.junit.jupiter.api.Test;
  * and the integration tests against a real Atlas backend.
  */
 @QuarkusTest
+@io.quarkus.test.junit.TestProfile(org.apache.sourcelume.registry.runtime.quarkus.test.StubStorageProfile.class)
 class IngestResourceHttpTest {
+
+    @Test
+    void rejectsDocumentsAboveTheStorageLimit() {
+        byte[] oversized = new byte[4 * 1024 * 1024 + 1];
+        java.util.Arrays.fill(oversized, (byte) ' ');
+        given().contentType("application/ld+json")
+                .body(oversized)
+                .post("/records")
+                .then()
+                .statusCode(413);
+    }
 
     @Test
     void wrongContentTypeIsRejected() {

@@ -30,14 +30,16 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasRegistryPlugin;
+import org.apache.sourcelume.registry.atlas.adapter.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
-import org.apache.sourcelume.registry.common.dto.RecordStatus;
+import org.apache.sourcelume.registry.common.dto.RecordType;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.common.dto.SourcelumeModelDto;
-import org.apache.sourcelume.registry.core.AtlasAdapter;
-import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
+import org.apache.sourcelume.registry.core.ingest.DefaultIngestService;
 import org.apache.sourcelume.registry.core.validation.ValidatorChain;
-import org.apache.sourcelume.registry.runtime.quarkus.ingest.service.IngestServiceImpl;
+import org.apache.sourcelume.registry.spi.RecordStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -87,8 +89,11 @@ class IngestResourceTest {
     private static final String EXTERNAL_AGENT = "https://example.org/";
 
     private final FakeAtlasAdapter fake = new FakeAtlasAdapter();
+    private final AtlasRegistryPlugin plugin = new AtlasRegistryPlugin(fake, new ObjectMapper(), "unused");
     private final IngestResource resource = new IngestResource(
-            fake, new IngestServiceImpl(ValidatorChain.discover(), fake, new ObjectMapper()), new ObjectMapper());
+            plugin.recordStore(),
+            new DefaultIngestService(ValidatorChain.discover(), plugin.recordStore()),
+            new ObjectMapper());
 
     @BeforeEach
     void resetStore() {
@@ -476,7 +481,7 @@ class IngestResourceTest {
         IngestResource.RecordResponse body = (IngestResource.RecordResponse) response.getEntity();
         assertEquals(RECORD_ID, body.qualifiedName());
         assertEquals(RecordStatus.INCOMPLETE, body.recordStatus());
-        assertEquals("[{\"message\": \"missing license\"}]", body.validationIssues());
+        assertTrue(body.validationIssues().contains("\"message\":\"missing license\""));
     }
 
     @Test
@@ -543,12 +548,12 @@ class IngestResourceTest {
 
         assertEquals(2, body.trainingData().size());
         body.trainingData().forEach(entry -> assertEquals(RecordStatus.VALIDATED, entry.recordStatus()));
-        assertEquals(1, fake.bulkLookups);
+        assertEquals(RecordType.entityTypeNames().size(), fake.bulkLookups);
         assertNull(fake.lookups.get(RECORD_ID), "the repeated dataset is not fetched one IRI at a time");
     }
 
     /**
-     * The references of one read are one search. When that search fails, every
+     * The references of one read form one batch. When that batch fails, every
      * entry is marked and the model record stays readable.
      */
     @Test
@@ -570,7 +575,7 @@ class IngestResourceTest {
         assertEquals(1, fake.bulkLookups);
     }
 
-    /** A failed search is the only request: the remaining datasets are not asked about on their own. */
+    /** A failed batch is not retried through individual lookups. */
     @Test
     void datasetsAfterAFailedLookupAreMarkedWithoutAsking() {
         resource.submit(modelRecord("complete", UNREGISTERED_DATASET, RECORD_ID).getBytes(StandardCharsets.UTF_8));
@@ -666,7 +671,7 @@ class IngestResourceTest {
 
         assertEquals(2, body.custodyChain().size());
         body.custodyChain().forEach(event -> assertEquals(RecordStatus.VALIDATED, event.recordStatus()));
-        assertEquals(1, fake.bulkLookups);
+        assertEquals(RecordType.entityTypeNames().size(), fake.bulkLookups);
         assertNull(fake.lookups.get(UPSTREAM_RECORD_ID), "the repeated agent is not fetched once per store");
     }
 
@@ -696,7 +701,7 @@ class IngestResourceTest {
         assertNull(body.trainingData().get(0).recordStatus());
     }
 
-    /** The agents of one read are one search. When that search fails, every event is marked. */
+    /** The agents of one read form one batch. When that batch fails, every event is marked. */
     @Test
     void aFailedAgentLookupMarksEveryEvent() {
         resource.submit(datasetRecord(UPSTREAM_RECORD_ID, EXTERNAL_AGENT).getBytes(StandardCharsets.UTF_8));
@@ -805,7 +810,7 @@ class IngestResourceTest {
         final java.util.Set<String> unreachable = new java.util.HashSet<>();
         int writes;
         int deletes;
-        /** Bulk reference lookups. One read is one call, however many IRIs it names. */
+        /** Bulk reference lookups, one call per entity type regardless of the number of IRIs. */
         int bulkLookups;
 
         @Override

@@ -16,8 +16,8 @@
  */
 package org.apache.sourcelume.registry.core.ingest;
 
-import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.core.validation.ValidationResult;
+import org.apache.sourcelume.registry.spi.RecordStatus;
 
 /**
  * The outcome of one record's run through the ingest pipeline: which
@@ -38,4 +38,5 @@ public record IngestResult(
         ValidationResult validation,
         String sha256,
         String validatedBy,
-        String validatedAt) {}
+        String validatedAt,
+        org.apache.sourcelume.registry.spi.WriteResult.Disposition disposition) {}

@@ -35,8 +35,8 @@ import org.apache.jena.shacl.validation.Severity;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.sourcelume.registry.common.spec.SpecResourceLoader;
 import org.apache.sourcelume.registry.core.validation.RecordValidator;
-import org.apache.sourcelume.registry.core.validation.ValidationIssue;
 import org.apache.sourcelume.registry.core.validation.ValidationResult;
+import org.apache.sourcelume.registry.spi.ValidationIssue;
 
 /**
  * The "shacl" validation stage (order 200): validates the document as an

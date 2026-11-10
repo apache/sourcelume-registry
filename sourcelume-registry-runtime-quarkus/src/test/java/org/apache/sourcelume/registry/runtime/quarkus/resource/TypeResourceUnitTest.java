@@ -23,9 +23,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
-import org.apache.sourcelume.registry.common.dto.RecordStatus;
-import org.apache.sourcelume.registry.core.AtlasAdapter;
+import org.apache.sourcelume.registry.spi.RecordStatus;
 import org.junit.jupiter.api.Test;
 
 class TypeResourceUnitTest {

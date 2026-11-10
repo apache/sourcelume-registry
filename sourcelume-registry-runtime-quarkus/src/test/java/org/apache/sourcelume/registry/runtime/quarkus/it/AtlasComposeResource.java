@@ -70,6 +70,18 @@ public class AtlasComposeResource implements QuarkusTestResourceLifecycleManager
 
     @Override
     public Map<String, String> start() {
+        String externalUrl = System.getProperty("sourcelume.it.atlas-url");
+        if (externalUrl != null && !externalUrl.isBlank()) {
+            return Map.of(
+                    "sourcelume.atlas.url",
+                    externalUrl,
+                    "sourcelume.atlas.user",
+                    System.getenv().getOrDefault("SOURCELUME_IT_ATLAS_USER", "admin"),
+                    "sourcelume.atlas.password",
+                    System.getenv().getOrDefault("SOURCELUME_IT_ATLAS_PASSWORD", "atlasR0cks!"),
+                    "sourcelume.atlas.bootstrap-on-startup",
+                    "true");
+        }
         File composeFile = composeFile();
         if (!composeFile.isFile()) {
             throw new IllegalStateException(
