@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import org.apache.sourcelume.registry.common.exception.SourcelumeValidationException;
+import org.apache.sourcelume.registry.spi.ValidationIssue;
 import org.junit.jupiter.api.Test;
 
 class ValidationServiceTest {

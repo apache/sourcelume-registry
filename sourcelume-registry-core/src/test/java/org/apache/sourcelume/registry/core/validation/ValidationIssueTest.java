@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
+import org.apache.sourcelume.registry.spi.ValidationIssue;
 import org.junit.jupiter.api.Test;
 
 class ValidationIssueTest {

@@ -27,13 +27,17 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasRegistryPlugin;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
-import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.common.dto.SourcelumeModelDto;
-import org.apache.sourcelume.registry.core.AtlasAdapter;
+import org.apache.sourcelume.registry.core.ingest.DefaultIngestService;
 import org.apache.sourcelume.registry.core.ingest.IngestResult;
+import org.apache.sourcelume.registry.core.ingest.RecordSubmission;
 import org.apache.sourcelume.registry.core.validation.ValidatorChain;
+import org.apache.sourcelume.registry.spi.RawDocument;
+import org.apache.sourcelume.registry.spi.RecordStatus;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -51,8 +55,9 @@ class IngestServiceImplTest {
     private static String validTrainingRecord;
 
     private final RecordingAtlasAdapter adapter = new RecordingAtlasAdapter();
-    private final IngestServiceImpl service =
-            new IngestServiceImpl(ValidatorChain.discover(), adapter, new ObjectMapper());
+    private final AtlasRegistryPlugin plugin = new AtlasRegistryPlugin(adapter, new ObjectMapper(), "unused");
+    private final DefaultIngestService service =
+            new DefaultIngestService(ValidatorChain.discover(), plugin.recordStore());
 
     @BeforeAll
     static void loadFixtures() {
@@ -66,7 +71,11 @@ class IngestServiceImplTest {
         SourcelumeDatasetDto submitted =
                 submitted("https://sourcelume.apache.org/records/minimal-example", validRecord);
 
-        IngestResult result = service.process(submitted);
+        IngestResult result = service.process(RecordSubmission.builder()
+                .document(RawDocument.builder()
+                        .bytes(submitted.getRawJsonLd().getBytes(StandardCharsets.UTF_8))
+                        .build())
+                .build());
 
         assertEquals(RecordStatus.VALIDATED, result.status());
         assertEquals("https://sourcelume.apache.org/records/minimal-example", result.qualifiedName());
@@ -102,7 +111,11 @@ class IngestServiceImplTest {
         SourcelumeDatasetDto submitted =
                 submitted("https://sourcelume.apache.org/records/invalid-missing-license", invalidRecord);
 
-        IngestResult result = service.process(submitted);
+        IngestResult result = service.process(RecordSubmission.builder()
+                .document(RawDocument.builder()
+                        .bytes(submitted.getRawJsonLd().getBytes(StandardCharsets.UTF_8))
+                        .build())
+                .build());
 
         assertEquals(RecordStatus.INCOMPLETE, result.status());
         assertTrue(!result.validation().conforms());
@@ -111,7 +124,10 @@ class IngestServiceImplTest {
         assertEquals(RecordStatus.INCOMPLETE, upserted.getRecordStatus());
         assertEquals("https://sourcelume.apache.org/records/invalid-missing-license", upserted.getQualifiedName());
         assertEquals(invalidRecord, upserted.getRawJsonLd());
-        assertNull(upserted.getName(), "nothing is mapped for an INCOMPLETE record");
+        assertEquals(
+                "invalid-missing-license",
+                upserted.getName(),
+                "the shared ingest path supplies a placeholder for incomplete records");
         assertNull(upserted.getLicenseId());
 
         assertVerdictContext(upserted, invalidRecord);
@@ -127,12 +143,15 @@ class IngestServiceImplTest {
     void stampsTheVerdictTimestampFromTheInjectedClock() {
         java.time.Clock fixed =
                 java.time.Clock.fixed(java.time.Instant.parse("2026-10-04T12:00:00Z"), java.time.ZoneOffset.UTC);
-        IngestServiceImpl clocked =
-                new IngestServiceImpl(ValidatorChain.discover(), adapter, new ObjectMapper(), fixed);
+        DefaultIngestService clocked = new DefaultIngestService(ValidatorChain.discover(), plugin.recordStore(), fixed);
         SourcelumeDatasetDto submitted =
                 submitted("https://sourcelume.apache.org/records/minimal-example", validRecord);
 
-        IngestResult result = clocked.process(submitted);
+        IngestResult result = clocked.process(RecordSubmission.builder()
+                .document(RawDocument.builder()
+                        .bytes(submitted.getRawJsonLd().getBytes(StandardCharsets.UTF_8))
+                        .build())
+                .build());
 
         assertEquals(
                 "2026-10-04T12:00:00Z",
@@ -152,7 +171,11 @@ class IngestServiceImplTest {
         submitted.setRawJsonLd(validTrainingRecord);
         submitted.setSha256(Digests.sha256Hex(validTrainingRecord.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
 
-        IngestResult result = service.process(submitted);
+        IngestResult result = service.process(RecordSubmission.builder()
+                .document(RawDocument.builder()
+                        .bytes(submitted.getRawJsonLd().getBytes(StandardCharsets.UTF_8))
+                        .build())
+                .build());
 
         assertEquals(RecordStatus.VALIDATED, result.status());
         assertEquals("TrainingProvenanceRecord", result.recordType());
@@ -167,14 +190,18 @@ class IngestServiceImplTest {
     }
 
     @Test
-    void guidTravelsWithTheVerdict() {
+    void backendGuidIsNotPartOfTheSubmissionContract() {
         SourcelumeDatasetDto submitted =
                 submitted("https://sourcelume.apache.org/records/minimal-example", validRecord);
         submitted.setGuid("existing-guid");
 
-        service.process(submitted);
+        service.process(RecordSubmission.builder()
+                .document(RawDocument.builder()
+                        .bytes(submitted.getRawJsonLd().getBytes(StandardCharsets.UTF_8))
+                        .build())
+                .build());
 
-        assertEquals("existing-guid", adapter.upserted.getGuid());
+        assertNull(adapter.upserted.getGuid());
     }
 
     private static SourcelumeDatasetDto submitted(String qualifiedName, String rawJsonLd) {
@@ -223,6 +250,9 @@ class IngestServiceImplTest {
 
         @Override
         public RecordEntityDto getRecordEntityByQualifiedName(String entityType, String qualifiedName) {
+            if (upserted != null
+                    && entityType.equals(upserted.getTypeName())
+                    && qualifiedName.equals(upserted.getQualifiedName())) return upserted;
             return null;
         }
 

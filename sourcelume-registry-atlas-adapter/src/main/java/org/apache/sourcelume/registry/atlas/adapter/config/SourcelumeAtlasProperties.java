@@ -16,48 +16,32 @@
  */
 package org.apache.sourcelume.registry.atlas.adapter.config;
 
-import io.smallrye.config.ConfigMapping;
-import io.smallrye.config.WithDefault;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 
 /**
- * Configuration for Atlas connectivity and Sourcelume schema bootstrap, bound from
- * MicroProfile Config properties under the {@code sourcelume.atlas} prefix.
- *
- * <p>Bound via the Quarkus/SmallRye Config {@code @ConfigMapping} extension of the
- * registry core's configuration surface. The password-file resolution allows the
- * Atlas password to be supplied via a file (for example a Docker/Kubernetes secret)
- * instead of a plaintext property.
+ * Atlas connection and schema configuration, populated by AtlasPluginProvider.
+ * The Quarkus runtime passes the selected provider's properties as plain data.
  */
-@ConfigMapping(prefix = "sourcelume.atlas")
 public interface SourcelumeAtlasProperties {
 
-    @WithDefault("http://localhost:21000")
     String url();
 
-    @WithDefault("admin")
     String user();
 
-    @WithDefault("atlasR0cks!")
     String password();
 
     Optional<String> passwordFile();
 
-    @WithDefault("context/0.0.1/sourcelume.jsonld")
     String specContextResource();
 
-    @WithDefault("models/sourcelume/sourcelume_model.json")
     String typedefsResource();
 
-    @WithDefault("true")
     boolean bootstrapOnStartup();
 
-    @WithDefault("5")
     int maxRetries();
 
-    @WithDefault("2000")
     long retryDelayMs();
 
     /**

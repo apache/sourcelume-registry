@@ -820,6 +820,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ConflictResponse"
+        "413":
+          description: The document exceeds the storage size limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "415":
           description: Unsupported content type
         "502":
@@ -830,7 +836,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "503":
-          description: The backend is unavailable; retry later
+          description: The backend is unavailable or the write outcome is unknown
+          headers:
+            X-Sourcelume-Error:
+              description: UNKNOWN_WRITE requires reconciliation before retrying
+              schema:
+                type: string
           content:
             application/json:
               schema:

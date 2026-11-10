@@ -28,12 +28,13 @@ import java.net.ConnectException;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
-import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
+import org.apache.sourcelume.registry.atlas.adapter.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.runtime.quarkus.test.TestAtlasAdapter;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 @QuarkusTest
+@io.quarkus.test.junit.TestProfile(org.apache.sourcelume.registry.runtime.quarkus.test.StubStorageProfile.class)
 class BackendFailureHttpTest {
 
     private static final String RECORD =

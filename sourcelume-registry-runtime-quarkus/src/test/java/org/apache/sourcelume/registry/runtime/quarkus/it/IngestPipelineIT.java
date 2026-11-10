@@ -29,11 +29,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
-import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.common.dto.SourcelumeModelDto;
-import org.apache.sourcelume.registry.core.AtlasAdapter;
-import org.apache.sourcelume.registry.runtime.quarkus.bootstrap.AtlasBootstrapService;
+import org.apache.sourcelume.registry.runtime.quarkus.storage.AtlasCompatibilityProducer;
+import org.apache.sourcelume.registry.spi.*;
+import org.apache.sourcelume.registry.spi.RecordStatus;
+import org.apache.sourcelume.registry.spi.RegistryPlugin;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -51,10 +52,10 @@ import org.junit.jupiter.api.Test;
 class IngestPipelineIT {
 
     @Inject
-    AtlasAdapter atlasAdapter;
+    AtlasCompatibilityProducer atlasCompatibility;
 
     @Inject
-    AtlasBootstrapService bootstrapService;
+    RegistryPlugin plugin;
 
     @Test
     void validRecordIsAnsweredWithItsVerdict() throws Exception {
@@ -181,7 +182,7 @@ class IngestPipelineIT {
                 .body("modelUri", org.hamcrest.Matchers.equalTo("https://example.org/models/it-model"));
 
         SourcelumeModelDto stored = (SourcelumeModelDto)
-                atlasAdapter.getRecordEntityByQualifiedName(SourcelumeModelDto.TYPE_NAME, recordId);
+                atlasCompatibility.adapter().getRecordEntityByQualifiedName(SourcelumeModelDto.TYPE_NAME, recordId);
         assertEquals(RecordStatus.VALIDATED, stored.getRecordStatus());
         assertEquals("https://example.org/models/it-model", stored.getModelUri());
         assertEquals("complete", stored.getDisclosure());
@@ -228,7 +229,7 @@ class IngestPipelineIT {
         assertEquals(original.getGuid(), retained.getGuid());
         assertEquals(typeless, retained.getRawJsonLd());
         assertNull(
-                atlasAdapter.getRecordEntityByQualifiedName(SourcelumeModelDto.TYPE_NAME, recordId),
+                atlasCompatibility.adapter().getRecordEntityByQualifiedName(SourcelumeModelDto.TYPE_NAME, recordId),
                 "a conflicting submission must not create a model record");
     }
 
@@ -237,9 +238,184 @@ class IngestPipelineIT {
         // The app boot already registered the type definitions; a second
         // registration must succeed on the existing type (mandatory
         // attributes cannot be added to an existing Atlas type).
-        assertTrue(
-                bootstrapService.registerTypeDefs(bootstrapService.loadTypeDefs()),
-                "re-registering the type definitions on an existing type must not fail");
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(plugin::initialize);
+    }
+
+    @Test
+    void storageSpiPreservesLargeUtf8DocumentsAndReplacesAttachments() {
+        String id = uniqueId("attachments");
+        var store = plugin.recordStore();
+        String text = "{\"id\":\"" + id + "\",\"padding\":\"" + "雪".repeat(50000) + "\"}";
+        var document = org.apache.sourcelume.registry.spi.RawDocument.builder()
+                .bytes(text.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                .build();
+        var attachment = org.apache.sourcelume.registry.spi.RecordAttachment.builder()
+                .name("signature")
+                .mediaType("application/jose")
+                .documentSha256(document.sha256())
+                .bytes(new byte[] {0, 1, 2, (byte) 255})
+                .build();
+        var original = org.apache.sourcelume.registry.spi.RecordEnvelope.builder()
+                .id(id)
+                .type("ProvenanceRecord")
+                .document(document)
+                .validation(org.apache.sourcelume.registry.spi.ValidationMetadata.builder()
+                        .status(RecordStatus.INCOMPLETE)
+                        .build())
+                .attributes(org.apache.sourcelume.registry.spi.RecordAttributes.builder()
+                        .name("sample")
+                        .description("remove me")
+                        .licenseId("remove me too")
+                        .build())
+                .attachments(java.util.List.of(attachment))
+                .build();
+        var first = store.write(org.apache.sourcelume.registry.spi.WriteRequest.builder()
+                .candidate(original)
+                .condition(org.apache.sourcelume.registry.spi.WriteCondition.absent())
+                .build());
+        assertEquals(original, store.get(id).orElseThrow().record());
+        var replacement = org.apache.sourcelume.registry.spi.RecordEnvelope.builder()
+                .id(id)
+                .type("ProvenanceRecord")
+                .document(document)
+                .validation(org.apache.sourcelume.registry.spi.ValidationMetadata.builder()
+                        .status(RecordStatus.VALIDATED)
+                        .build())
+                .attributes(org.apache.sourcelume.registry.spi.RecordAttributes.builder()
+                        .build())
+                .build();
+        store.write(org.apache.sourcelume.registry.spi.WriteRequest.builder()
+                .candidate(replacement)
+                .condition(org.apache.sourcelume.registry.spi.WriteCondition.atRevision(
+                        first.stored().revision()))
+                .build());
+        var stored = store.get(id).orElseThrow();
+        assertEquals(replacement, stored.record(), "Optional Atlas attributes must be cleared, not retained by upsert");
+        org.junit.jupiter.api.Assertions.assertNotEquals(first.stored().revision(), stored.revision());
+    }
+
+    @Test
+    void legacyAtlasViewsUseTheSelectedAtlasPlugin() {
+        given().get("/api/v1/types/dataset")
+                .then()
+                .statusCode(200)
+                .body("entityDefs[0].name", org.hamcrest.Matchers.equalTo("sourcelume_dataset"));
+    }
+
+    @Test
+    void bulkReadsSeeFreshRecordsAcrossBatchesAndOmitDeletedRecords() {
+        String prefix = uniqueId("bulk") + "/" + "segment-".repeat(50);
+        var ids = new java.util.ArrayList<String>();
+        var adapter = atlasCompatibility.adapter();
+        for (int i = 0; i < 40; i++) {
+            String id = prefix + i;
+            ids.add(id);
+            org.apache.sourcelume.registry.common.dto.RecordEntityDto entity =
+                    i % 2 == 0 ? new SourcelumeDatasetDto() : new SourcelumeModelDto();
+            entity.setQualifiedName(id);
+            entity.setName("bulk-" + i);
+            entity.setRawJsonLd("{ \"fresh\": true }\n");
+            entity.setRecordStatus(RecordStatus.INCOMPLETE);
+            adapter.createOrUpdateRecordEntity(entity);
+        }
+        String deleted = ids.get(0);
+        adapter.deleteRecordEntity(SourcelumeDatasetDto.TYPE_NAME, deleted);
+        String present = ids.get(1);
+        ids.add(present);
+        ids.add(prefix + "missing");
+        var found = plugin.recordStore().getAll(ids);
+        assertEquals(39, found.size());
+        assertTrue(!found.containsKey(deleted));
+        assertTrue(!found.containsKey(prefix + "missing"));
+        assertEquals(plugin.recordStore().get(present).orElseThrow(), found.get(present));
+        assertEquals("TrainingProvenanceRecord", found.get(present).record().type());
+        assertTrue(found.values().stream().allMatch(r -> r.record().document() != null));
+    }
+
+    @Test
+    void facetsQueryExactReferencesAndClearOnCorrection() throws Exception {
+        String id = uniqueId("facets");
+        String dataset = id + "/Dataset";
+        String creator = "Team 雪 \"A\" " + id;
+        RecordFacets facets = RecordFacets.builder()
+                .add(RecordFacet.TRAINING_DATASET, dataset)
+                .add(RecordFacet.TRAINING_DATASET, id + "/Other")
+                .add(RecordFacet.CREATOR_NAME, creator)
+                .build();
+        RecordEnvelope record = RecordEnvelope.builder()
+                .id(id)
+                .type("TrainingProvenanceRecord")
+                .document(RawDocument.builder()
+                        .bytes("{}".getBytes(StandardCharsets.UTF_8))
+                        .build())
+                .validation(ValidationMetadata.builder()
+                        .status(RecordStatus.INCOMPLETE)
+                        .build())
+                .facets(facets)
+                .build();
+        WriteResult first = plugin.recordStore()
+                .write(WriteRequest.builder()
+                        .candidate(record)
+                        .condition(WriteCondition.absent())
+                        .build());
+        assertEquals(facets, plugin.recordStore().get(id).orElseThrow().record().facets());
+        SearchQuery query = SearchQuery.builder()
+                .type(record.type())
+                .status(RecordStatus.INCOMPLETE)
+                .facets(RecordFacets.builder()
+                        .add(RecordFacet.TRAINING_DATASET, "urn:missing")
+                        .add(RecordFacet.TRAINING_DATASET, dataset)
+                        .add(RecordFacet.CREATOR_NAME, creator)
+                        .build())
+                .build();
+        awaitFacetIds(query, java.util.Set.of(id));
+        for (String wrong : java.util.List.of(dataset.toLowerCase(java.util.Locale.ROOT), id + "/Data")) {
+            awaitFacetIds(
+                    SearchQuery.builder()
+                            .type(record.type())
+                            .status(RecordStatus.INCOMPLETE)
+                            .facets(RecordFacets.builder()
+                                    .add(RecordFacet.TRAINING_DATASET, wrong)
+                                    .build())
+                            .build(),
+                    java.util.Set.of());
+        }
+        awaitFacetIds(
+                SearchQuery.builder()
+                        .type(record.type())
+                        .status(RecordStatus.INCOMPLETE)
+                        .facets(RecordFacets.builder()
+                                .add(RecordFacet.TRAINING_DATASET, dataset)
+                                .add(RecordFacet.CREATOR_NAME, "wrong creator")
+                                .build())
+                        .build(),
+                java.util.Set.of());
+        RecordEnvelope replacement = RecordEnvelope.builder()
+                .id(id)
+                .type(record.type())
+                .document(record.document())
+                .validation(record.validation())
+                .build();
+        plugin.recordStore()
+                .write(WriteRequest.builder()
+                        .candidate(replacement)
+                        .condition(WriteCondition.atRevision(first.stored().revision()))
+                        .build());
+        awaitFacetIds(query, java.util.Set.of());
+        assertEquals(replacement, plugin.recordStore().get(id).orElseThrow().record());
+    }
+
+    private void awaitFacetIds(SearchQuery query, java.util.Set<String> expected) throws Exception {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+        java.util.Set<String> found;
+        do {
+            found = plugin.recordSearch().search(query).stream()
+                    .map(v -> v.record().id())
+                    .collect(java.util.stream.Collectors.toSet());
+            if (found.equals(expected)) return;
+            Thread.sleep(100);
+        } while (System.nanoTime() < deadline);
+        assertEquals(expected, found);
     }
 
     // --- helpers ---
@@ -250,7 +426,7 @@ class IngestPipelineIT {
 
     private SourcelumeDatasetDto storedDataset(String recordId) {
         return (SourcelumeDatasetDto)
-                atlasAdapter.getRecordEntityByQualifiedName(SourcelumeDatasetDto.TYPE_NAME, recordId);
+                atlasCompatibility.adapter().getRecordEntityByQualifiedName(SourcelumeDatasetDto.TYPE_NAME, recordId);
     }
 
     private static String fixture(String resource, String recordId) throws IOException {

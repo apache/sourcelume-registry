@@ -17,6 +17,7 @@
 package org.apache.sourcelume.registry.core.validation;
 
 import org.apache.sourcelume.registry.common.exception.SourcelumeValidationException;
+import org.apache.sourcelume.registry.spi.ValidationIssue;
 
 /**
  * Public-facing entry point for validation of raw JSON‑LD provenance records.

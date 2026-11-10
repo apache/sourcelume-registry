@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.ServiceLoader;
 import java.util.Set;
+import org.apache.sourcelume.registry.spi.ValidationIssue;
 
 /**
  * An ordered chain of {@link RecordValidator}s, executed by ascending

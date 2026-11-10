@@ -37,6 +37,7 @@ import org.junit.jupiter.api.Test;
  * the first test case proves that implicitly by the application booting.
  */
 @QuarkusTest
+@io.quarkus.test.junit.TestProfile(org.apache.sourcelume.registry.runtime.quarkus.test.StubStorageProfile.class)
 class RecordValidationResourceTest {
 
     private static final String VALID_RECORD =

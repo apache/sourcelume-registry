@@ -20,14 +20,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.ConnectException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -39,20 +39,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter.TypeDefinitionModel;
 import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
+import org.apache.sourcelume.registry.atlas.adapter.exception.AtlasAdapterException;
 import org.apache.sourcelume.registry.common.dto.RecordEntityDto;
-import org.apache.sourcelume.registry.common.dto.RecordStatus;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.common.dto.SourcelumeModelDto;
-import org.apache.sourcelume.registry.core.AtlasAdapter;
-import org.apache.sourcelume.registry.core.AtlasAdapter.TypeDefinitionModel;
-import org.apache.sourcelume.registry.core.exception.AtlasAdapterException;
+import org.apache.sourcelume.registry.spi.RecordFacets;
+import org.apache.sourcelume.registry.spi.RecordStatus;
+import org.apache.sourcelume.registry.spi.SearchQuery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Thin REST client implementation of the framework-free
- * {@link org.apache.sourcelume.registry.core.AtlasAdapter} SPI, using the JDK
+ * Atlas REST transport used by {@link AtlasRegistryPlugin}, using the JDK
  * {@link HttpClient} and Jackson. Talks to the Apache Atlas REST API directly,
  * without pulling in {@code atlas-client-v2} or {@code atlas-intg} and their
  * transitive dependency tree.
@@ -70,11 +70,13 @@ import org.slf4j.LoggerFactory;
  *       — resolve many qualified names against the graph, not the search index</li>
  * </ul>
  *
- * <p>Atlas-specific JSON shapes live here and only here. The SPI stays
- * Sourcelume-typed.
+ * <p>Atlas-specific JSON shapes live here and only here. The storage SPI exposes no Atlas identifiers or type-definition payloads.
  */
-@ApplicationScoped
-public class RestAtlasAdapter implements AtlasAdapter {
+public class RestAtlasAdapter implements AtlasAdapter, AutoCloseable {
+    @Override
+    public void close() {
+        httpClient.shutdown();
+    }
 
     private static final Logger log = LoggerFactory.getLogger(RestAtlasAdapter.class);
 
@@ -92,7 +94,6 @@ public class RestAtlasAdapter implements AtlasAdapter {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    @Inject
     public RestAtlasAdapter(SourcelumeAtlasProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
         this.objectMapper = objectMapper;
@@ -293,14 +294,35 @@ public class RestAtlasAdapter implements AtlasAdapter {
         if (record.getSha256() != null) attributes.put("sha256", record.getSha256());
         if (record.getValidatedBy() != null) attributes.put("validatedBy", record.getValidatedBy());
         if (record.getValidatedAt() != null) attributes.put("validatedAt", record.getValidatedAt());
+        if (record.getRecordAttributes() != null) attributes.put("recordAttributes", record.getRecordAttributes());
+        if (record.getRecordFacets() != null) attributes.put("recordFacets", record.getRecordFacets());
+        if (record.getRecordFacetIndex() != null) attributes.put("recordFacetIndex", record.getRecordFacetIndex());
+        if (record.getRegistryRevision() != null) attributes.put("registryRevision", record.getRegistryRevision());
+        if (record.getRecordAttachments() != null) attributes.put("recordAttachments", record.getRecordAttachments());
+        // SPI writes replace the complete projection. Explicit null clears attributes that
+        // Atlas would otherwise retain during an upsert.
+        if (record.getRegistryRevision() != null) {
+            for (String field : attributesFor(record.getTypeName())) {
+                if (!attributes.has(field)) attributes.putNull(field);
+            }
+        }
 
         ObjectNode wrapper = objectMapper.createObjectNode();
         ArrayNode entities = wrapper.putArray("entities");
         entities.add(entity);
 
+        HttpRequest request;
         try {
             String body = objectMapper.writeValueAsString(wrapper);
-            HttpResponse<String> resp = sendJson("POST", "/api/atlas/v2/entity/bulk", body);
+            request = baseRequest("POST", "/api/atlas/v2/entity/bulk")
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                    .build();
+        } catch (IOException | RuntimeException e) {
+            throw AtlasAdapterException.notSent("Cannot prepare Atlas mutation", e);
+        }
+        try {
+            HttpResponse<String> resp = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() != 200 && resp.statusCode() != 201) {
                 throw new AtlasAdapterException(
                         "Failed to persist record entity to Atlas: " + resp.body(), resp.statusCode(), null);
@@ -312,6 +334,8 @@ public class RestAtlasAdapter implements AtlasAdapter {
             // upserts take DTOs that may be shared snapshots; the guid is
             // returned instead, and reads resolve it via the qualified name.
             return guid;
+        } catch (ConnectException | HttpConnectTimeoutException e) {
+            throw AtlasAdapterException.notSent("Cannot connect to Atlas for mutation", e);
         } catch (IOException e) {
             throw new AtlasAdapterException("I/O error persisting entity: " + e.getMessage(), 500, e);
         } catch (InterruptedException e) {
@@ -408,6 +432,17 @@ public class RestAtlasAdapter implements AtlasAdapter {
 
     @Override
     public List<RecordEntityDto> findRecordEntitiesByStatus(String entityType, RecordStatus status, int limit) {
+        return findRecordEntities(
+                entityType, status, limit, RecordFacets.builder().build());
+    }
+
+    @Override
+    public List<RecordEntityDto> findRecordEntities(String entityType, SearchQuery query) {
+        return findRecordEntities(entityType, query.status(), query.limit(), query.facets());
+    }
+
+    private List<RecordEntityDto> findRecordEntities(
+            String entityType, RecordStatus status, int limit, RecordFacets facets) {
         if (entityType == null || entityType.isBlank()) {
             throw new IllegalArgumentException("entityType cannot be null or blank");
         }
@@ -432,6 +467,24 @@ public class RestAtlasAdapter implements AtlasAdapter {
         filters.put("attributeName", "recordStatus");
         filters.put("operator", "=");
         filters.put("attributeValue", status.name());
+        if (!facets.isEmpty()) {
+            ObjectNode all = objectMapper.createObjectNode().put("condition", "AND");
+            ArrayNode conditions = all.putArray("criterion");
+            conditions.add(filters);
+            facets.values().forEach((facet, values) -> {
+                ObjectNode any = objectMapper.createObjectNode().put("condition", "OR");
+                ArrayNode alternatives = any.putArray("criterion");
+                for (String value : values) {
+                    alternatives
+                            .addObject()
+                            .put("attributeName", "recordFacetIndex")
+                            .put("operator", "contains")
+                            .put("attributeValue", AtlasFacetIndex.token(facet, value));
+                }
+                conditions.add(any);
+            });
+            body.set("entityFilters", all);
+        }
 
         try {
             HttpResponse<String> resp =
@@ -591,8 +644,18 @@ public class RestAtlasAdapter implements AtlasAdapter {
             case SourcelumeModelDto.TYPE_NAME -> attributes.addAll(List.of("modelUri", "modelVersion", "disclosure"));
             default -> attributes.addAll(List.of("sourceUri", "licenseId"));
         }
-        attributes.addAll(
-                List.of("recordStatus", "rawJsonLd", "validationIssues", "sha256", "validatedBy", "validatedAt"));
+        attributes.addAll(List.of(
+                "recordStatus",
+                "rawJsonLd",
+                "validationIssues",
+                "sha256",
+                "validatedBy",
+                "validatedAt",
+                "registryRevision",
+                "recordAttachments",
+                "recordAttributes",
+                "recordFacets",
+                "recordFacetIndex"));
         return attributes;
     }
 
@@ -626,6 +689,11 @@ public class RestAtlasAdapter implements AtlasAdapter {
         dto.setSha256(attrs.path("sha256").asText(null));
         dto.setValidatedBy(attrs.path("validatedBy").asText(null));
         dto.setValidatedAt(attrs.path("validatedAt").asText(null));
+        dto.setRegistryRevision(attrs.path("registryRevision").asText(null));
+        dto.setRecordAttributes(attrs.path("recordAttributes").asText(null));
+        dto.setRecordFacets(attrs.path("recordFacets").asText(null));
+        dto.setRecordFacetIndex(attrs.path("recordFacetIndex").asText(null));
+        dto.setRecordAttachments(attrs.path("recordAttachments").asText(null));
         dto.setValidationIssues(attrs.path("validationIssues").asText(null));
         JsonNode recordStatus = attrs.path("recordStatus");
         if (recordStatus.isTextual()) {

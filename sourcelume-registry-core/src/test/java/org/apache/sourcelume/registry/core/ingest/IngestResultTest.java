@@ -20,9 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.List;
-import org.apache.sourcelume.registry.common.dto.RecordStatus;
-import org.apache.sourcelume.registry.core.validation.ValidationIssue;
 import org.apache.sourcelume.registry.core.validation.ValidationResult;
+import org.apache.sourcelume.registry.spi.RecordStatus;
+import org.apache.sourcelume.registry.spi.ValidationIssue;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -43,7 +43,8 @@ class IngestResultTest {
                 validation,
                 "0123abc",
                 "json-schema,shacl",
-                "2026-10-04T14:00:00Z");
+                "2026-10-04T14:00:00Z",
+                org.apache.sourcelume.registry.spi.WriteResult.Disposition.CREATED);
 
         assertEquals("https://example.org/records/one", result.qualifiedName());
         assertEquals(RecordStatus.INCOMPLETE, result.status());
@@ -62,7 +63,8 @@ class IngestResultTest {
                 ValidationResult.OK,
                 "abc",
                 "chain",
-                "2026-10-04T14:00:00Z");
+                "2026-10-04T14:00:00Z",
+                org.apache.sourcelume.registry.spi.WriteResult.Disposition.CREATED);
         IngestResult b = new IngestResult(
                 "q",
                 "ProvenanceRecord",
@@ -70,7 +72,8 @@ class IngestResultTest {
                 ValidationResult.OK,
                 "abc",
                 "chain",
-                "2026-10-04T14:00:00Z");
+                "2026-10-04T14:00:00Z",
+                org.apache.sourcelume.registry.spi.WriteResult.Disposition.CREATED);
 
         assertEquals(a, b);
         assertEquals(a.hashCode(), b.hashCode());

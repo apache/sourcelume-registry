@@ -31,11 +31,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Set;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter.TypeDefinitionModel;
 import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.common.dto.SourcelumeModelDto;
-import org.apache.sourcelume.registry.core.AtlasAdapter;
-import org.apache.sourcelume.registry.core.AtlasAdapter.TypeDefinitionModel;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
@@ -58,17 +58,22 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 @Produces(MediaType.APPLICATION_JSON)
 public class TypeResource {
 
-    private final AtlasAdapter atlasAdapter;
+    private final java.util.function.Supplier<AtlasAdapter> atlasAdapter;
     private final ObjectMapper objectMapper;
     private final String typedefsResource;
 
     @Inject
-    public TypeResource(AtlasAdapter atlasAdapter, ObjectMapper objectMapper, SourcelumeAtlasProperties properties) {
-        this(atlasAdapter, objectMapper, properties.typedefsResource());
+    public TypeResource(
+            org.apache.sourcelume.registry.runtime.quarkus.storage.AtlasCompatibilityProducer compatibility,
+            ObjectMapper objectMapper,
+            SourcelumeAtlasProperties properties) {
+        this.atlasAdapter = compatibility::adapter;
+        this.objectMapper = objectMapper;
+        this.typedefsResource = properties.typedefsResource();
     }
 
     TypeResource(AtlasAdapter atlasAdapter, ObjectMapper objectMapper, String typedefsResource) {
-        this.atlasAdapter = atlasAdapter;
+        this.atlasAdapter = () -> atlasAdapter;
         this.objectMapper = objectMapper;
         this.typedefsResource = typedefsResource;
     }
@@ -84,7 +89,7 @@ public class TypeResource {
             description = "The typedefs model",
             content = @Content(schema = @Schema(type = SchemaType.OBJECT)))
     public Response getTypeDefs() {
-        TypeDefinitionModel model = atlasAdapter.loadTypeDefs(typedefsResource);
+        TypeDefinitionModel model = atlasAdapter.get().loadTypeDefs(typedefsResource);
         return Response.ok(new String(model.getRawJson(), StandardCharsets.UTF_8))
                 .build();
     }
@@ -120,7 +125,7 @@ public class TypeResource {
     }
 
     private Response entityTypeDef(String entityTypeName) throws IOException {
-        TypeDefinitionModel model = atlasAdapter.loadTypeDefs(typedefsResource);
+        TypeDefinitionModel model = atlasAdapter.get().loadTypeDefs(typedefsResource);
         JsonNode typeDefs = objectMapper.readTree(model.getRawJson());
         JsonNode entityDef = findByName(typeDefs.path("entityDefs"), entityTypeName);
         if (entityDef == null) {

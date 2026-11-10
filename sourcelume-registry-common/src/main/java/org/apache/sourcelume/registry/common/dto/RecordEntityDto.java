@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.constraints.NotBlank;
 import java.util.Objects;
+import org.apache.sourcelume.registry.spi.RecordStatus;
 
 /**
  * Base DTO for a Sourcelume entity that stores an ingested record with its
@@ -67,6 +68,64 @@ public abstract class RecordEntityDto {
     private String validatedBy;
     /** When the verdict was produced (ISO-8601, UTC). */
     private String validatedAt;
+
+    private String recordFacets;
+    private String recordFacetIndex;
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getRecordFacets() {
+        return recordFacets;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public void setRecordFacets(String value) {
+        recordFacets = value;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getRecordFacetIndex() {
+        return recordFacetIndex;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public void setRecordFacetIndex(String value) {
+        recordFacetIndex = value;
+    }
+
+    private String recordAttributes;
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getRecordAttributes() {
+        return recordAttributes;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public void setRecordAttributes(String value) {
+        recordAttributes = value;
+    }
+
+    private String registryRevision;
+    private String recordAttachments;
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getRegistryRevision() {
+        return registryRevision;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public void setRegistryRevision(String value) {
+        registryRevision = value;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getRecordAttachments() {
+        return recordAttachments;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public void setRecordAttachments(String value) {
+        recordAttachments = value;
+    }
 
     /**
      * The backend entity type name this DTO is written under (the
