@@ -92,6 +92,23 @@ class IngestResourceHttpTest {
     }
 
     @Test
+    void invalidUtf8BodyIsRejectedOverHttp() {
+        byte[] body = "{\"id\":\"https://sourcelume.apache.org/records/http-utf8\",".getBytes(StandardCharsets.UTF_8);
+        // Append two bytes that are not a valid UTF-8 sequence.
+        byte[] invalid = new byte[body.length + 2];
+        System.arraycopy(body, 0, invalid, 0, body.length);
+        invalid[body.length] = (byte) 0xFF;
+        invalid[body.length + 1] = (byte) 0xFE;
+
+        given().contentType(ContentType.JSON)
+                .body(invalid)
+                .when()
+                .post("/records")
+                .then()
+                .statusCode(400);
+    }
+
+    @Test
     void documentReturnsTheStoredBodyVerbatimOverHttp() {
         String id = "https://sourcelume.apache.org/records/http-document-" + UUID.randomUUID();
         String original = "{\"id\":\"" + id + "\",\"type\":\"ProvenanceRecord\"}";
