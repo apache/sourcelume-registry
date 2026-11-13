@@ -26,6 +26,9 @@ import org.apache.sourcelume.registry.spi.RecordFacets;
 
 /** Fixed-width, case-sensitive tokens avoid Atlas text analysis changing exact facet matching. */
 final class AtlasFacetIndex {
+    static final String ATTRIBUTE = "recordFacetTokens";
+    static final String LEGACY_ATTRIBUTE = "recordFacetIndex";
+
     private AtlasFacetIndex() {}
 
     static String token(RecordFacet facet, String value) {

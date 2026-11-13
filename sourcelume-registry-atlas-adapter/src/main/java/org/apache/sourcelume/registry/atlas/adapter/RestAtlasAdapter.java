@@ -296,7 +296,12 @@ public class RestAtlasAdapter implements AtlasAdapter, AutoCloseable {
         if (record.getValidatedAt() != null) attributes.put("validatedAt", record.getValidatedAt());
         if (record.getRecordAttributes() != null) attributes.put("recordAttributes", record.getRecordAttributes());
         if (record.getRecordFacets() != null) attributes.put("recordFacets", record.getRecordFacets());
-        if (record.getRecordFacetIndex() != null) attributes.put("recordFacetIndex", record.getRecordFacetIndex());
+        if (record.getRecordFacetIndex() != null) {
+            attributes.put(AtlasFacetIndex.ATTRIBUTE, record.getRecordFacetIndex());
+            // Existing catalogs retain the old composite index after a typedef update.
+            // Clear its value in the same mutation so it neither overflows nor leaves stale matches.
+            attributes.putNull(AtlasFacetIndex.LEGACY_ATTRIBUTE);
+        }
         if (record.getRegistryRevision() != null) attributes.put("registryRevision", record.getRegistryRevision());
         if (record.getRecordAttachments() != null) attributes.put("recordAttachments", record.getRecordAttachments());
         // SPI writes replace the complete projection. Explicit null clears attributes that
@@ -475,11 +480,14 @@ public class RestAtlasAdapter implements AtlasAdapter, AutoCloseable {
                 ObjectNode any = objectMapper.createObjectNode().put("condition", "OR");
                 ArrayNode alternatives = any.putArray("criterion");
                 for (String value : values) {
-                    alternatives
-                            .addObject()
-                            .put("attributeName", "recordFacetIndex")
-                            .put("operator", "contains")
-                            .put("attributeValue", AtlasFacetIndex.token(facet, value));
+                    // Records written before this attribute was introduced remain searchable.
+                    for (String attribute : List.of(AtlasFacetIndex.ATTRIBUTE, AtlasFacetIndex.LEGACY_ATTRIBUTE)) {
+                        alternatives
+                                .addObject()
+                                .put("attributeName", attribute)
+                                .put("operator", "contains")
+                                .put("attributeValue", AtlasFacetIndex.token(facet, value));
+                    }
                 }
                 conditions.add(any);
             });
@@ -655,7 +663,8 @@ public class RestAtlasAdapter implements AtlasAdapter, AutoCloseable {
                 "recordAttachments",
                 "recordAttributes",
                 "recordFacets",
-                "recordFacetIndex"));
+                AtlasFacetIndex.ATTRIBUTE,
+                AtlasFacetIndex.LEGACY_ATTRIBUTE));
         return attributes;
     }
 
@@ -692,7 +701,10 @@ public class RestAtlasAdapter implements AtlasAdapter, AutoCloseable {
         dto.setRegistryRevision(attrs.path("registryRevision").asText(null));
         dto.setRecordAttributes(attrs.path("recordAttributes").asText(null));
         dto.setRecordFacets(attrs.path("recordFacets").asText(null));
-        dto.setRecordFacetIndex(attrs.path("recordFacetIndex").asText(null));
+        String facetIndex = attrs.path(AtlasFacetIndex.ATTRIBUTE).asText(null);
+        if (facetIndex == null)
+            facetIndex = attrs.path(AtlasFacetIndex.LEGACY_ATTRIBUTE).asText(null);
+        dto.setRecordFacetIndex(facetIndex);
         dto.setRecordAttachments(attrs.path("recordAttachments").asText(null));
         dto.setValidationIssues(attrs.path("validationIssues").asText(null));
         JsonNode recordStatus = attrs.path("recordStatus");

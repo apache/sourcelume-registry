@@ -22,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
 import jakarta.inject.Inject;
@@ -29,6 +31,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter.TypeDefinitionModel;
+import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
 import org.apache.sourcelume.registry.common.dto.SourcelumeDatasetDto;
 import org.apache.sourcelume.registry.common.dto.SourcelumeModelDto;
 import org.apache.sourcelume.registry.runtime.quarkus.storage.AtlasCompatibilityProducer;
@@ -36,6 +40,8 @@ import org.apache.sourcelume.registry.spi.*;
 import org.apache.sourcelume.registry.spi.RecordStatus;
 import org.apache.sourcelume.registry.spi.RegistryPlugin;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * End-to-end ingest against a real Apache Atlas 2.5.0 backend: the
@@ -56,6 +62,9 @@ class IngestPipelineIT {
 
     @Inject
     RegistryPlugin plugin;
+
+    @Inject
+    SourcelumeAtlasProperties atlasProperties;
 
     @Test
     void validRecordIsAnsweredWithItsVerdict() throws Exception {
@@ -403,6 +412,142 @@ class IngestPipelineIT {
                         .build());
         awaitFacetIds(query, java.util.Set.of());
         assertEquals(replacement, plugin.recordStore().get(id).orElseThrow().record());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {40, 41, 161, 600})
+    void manyTrainingReferencesCanBeStoredQueriedAndReplaced(int references) throws Exception {
+        String id = uniqueId("many-facets-" + references);
+        ObjectNode body = (ObjectNode) new ObjectMapper().readTree(fixture("/records/it-training-valid.jsonld", id));
+        body.remove("created"); // Keep the record correctable while exercising the HTTP ingestion path.
+        ((ObjectNode) body.withArray("creator").get(0)).put("name", id);
+        var trainingData = body.putArray("trainingData");
+        for (int i = 0; i < references; i++) {
+            trainingData.addObject().put("dataset", id + "/before/" + i).put("phase", "pretraining");
+        }
+        String original = body.toString();
+        given().contentType("application/ld+json")
+                .body(original)
+                .post("/records")
+                .then()
+                .statusCode(201)
+                .body("recordStatus", org.hamcrest.Matchers.equalTo("INCOMPLETE"));
+        var stored = plugin.recordStore().get(id).orElseThrow().record();
+        assertEquals(original, stored.document().text());
+        assertEquals(
+                references,
+                stored.facets().values().get(RecordFacet.TRAINING_DATASET).size());
+        SearchQuery before = trainingReferenceQuery(id, id + "/before/" + (references - 1));
+        awaitFacetIds(before, java.util.Set.of(id));
+
+        trainingData.removeAll();
+        for (int i = 0; i < references; i++) {
+            trainingData.addObject().put("dataset", id + "/after/" + i).put("phase", "pretraining");
+        }
+        String replacement = body.toString();
+        given().contentType("application/ld+json")
+                .body(replacement)
+                .post("/records")
+                .then()
+                .statusCode(200)
+                .body("recordStatus", org.hamcrest.Matchers.equalTo("INCOMPLETE"));
+        assertEquals(
+                replacement,
+                plugin.recordStore().get(id).orElseThrow().record().document().text());
+        awaitFacetIds(before, java.util.Set.of());
+        awaitFacetIds(trainingReferenceQuery(id, id + "/after/" + (references - 1)), java.util.Set.of(id));
+        assertTrue(plugin.isReady(), "Large facet sets must not quarantine subsequent writes");
+    }
+
+    @Test
+    void legacyFacetIndexRemainsSearchableAndCanBeReplacedWithManyReferences() throws Exception {
+        var json = new ObjectMapper();
+        var adapter = atlasCompatibility.adapter();
+        var definitions = adapter.loadTypeDefs(atlasProperties.typedefsResource());
+        var oldIndexedDefinitions = json.readTree(definitions.getRawJson());
+        for (var entity : oldIndexedDefinitions.path("entityDefs")) {
+            for (var attribute : entity.path("attributeDefs")) {
+                if ("recordFacetIndex".equals(attribute.path("name").asText())) {
+                    ((ObjectNode) attribute).put("isIndexable", true);
+                }
+            }
+        }
+        // Recreate the old composite index. Updating the typedef cannot remove it.
+        adapter.registerOrUpdateTypeDefs(new TypeDefinitionModel(
+                "legacy-facet-index", json.writeValueAsBytes(oldIndexedDefinitions), definitions.getEntityDefCount()));
+        String id = uniqueId("legacy-facets");
+        String dataset = id + "/old";
+        String token = java.util.HexFormat.of()
+                .formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                        .digest(("TRAINING_DATASET\n" + dataset).getBytes(StandardCharsets.UTF_8)));
+        ObjectNode payload = json.createObjectNode();
+        ObjectNode attributes = payload.putArray("entities")
+                .addObject()
+                .put("typeName", SourcelumeModelDto.TYPE_NAME)
+                .putObject("attributes");
+        attributes.put("qualifiedName", id);
+        attributes.put("name", id);
+        attributes.put("rawJsonLd", "{}");
+        attributes.put("recordStatus", "INCOMPLETE");
+        attributes.put(
+                "recordFacets",
+                json.writeValueAsString(java.util.Map.of("TRAINING_DATASET", java.util.List.of(dataset))));
+        attributes.put("recordFacetIndex", token);
+        try {
+            given().auth()
+                    .preemptive()
+                    .basic(atlasProperties.user(), atlasProperties.resolvedPassword())
+                    .contentType("application/json")
+                    .body(payload.toString())
+                    .post(atlasProperties.url() + "/api/atlas/v2/entity/bulk")
+                    .then()
+                    .statusCode(200);
+        } finally {
+            plugin.initialize();
+        }
+        SearchQuery oldQuery = SearchQuery.builder()
+                .type("TrainingProvenanceRecord")
+                .status(RecordStatus.INCOMPLETE)
+                .facets(RecordFacets.builder()
+                        .add(RecordFacet.TRAINING_DATASET, dataset)
+                        .build())
+                .limit(1)
+                .build();
+        awaitFacetIds(oldQuery, java.util.Set.of(id));
+        var old = plugin.recordStore().get(id).orElseThrow();
+        assertEquals(java.util.Set.of(dataset), old.record().facets().values().get(RecordFacet.TRAINING_DATASET));
+        var facets = RecordFacets.builder().add(RecordFacet.CREATOR_NAME, id);
+        for (int i = 0; i < 600; i++) {
+            facets.add(RecordFacet.TRAINING_DATASET, id + "/new/" + i);
+        }
+        var replacement = RecordEnvelope.builder()
+                .id(id)
+                .type(old.record().type())
+                .document(old.record().document())
+                .validation(old.record().validation())
+                .facets(facets.build())
+                .build();
+        plugin.recordStore()
+                .write(WriteRequest.builder()
+                        .candidate(replacement)
+                        .condition(WriteCondition.atRevision(old.revision()))
+                        .build());
+        assertEquals(replacement, plugin.recordStore().get(id).orElseThrow().record());
+        awaitFacetIds(oldQuery, java.util.Set.of());
+        awaitFacetIds(trainingReferenceQuery(id, id + "/new/599"), java.util.Set.of(id));
+        assertTrue(plugin.isReady());
+    }
+
+    private SearchQuery trainingReferenceQuery(String creator, String dataset) {
+        return SearchQuery.builder()
+                .type("TrainingProvenanceRecord")
+                .status(RecordStatus.INCOMPLETE)
+                .facets(RecordFacets.builder()
+                        .add(RecordFacet.CREATOR_NAME, creator)
+                        .add(RecordFacet.TRAINING_DATASET, dataset)
+                        .build())
+                .limit(1)
+                .build();
     }
 
     private void awaitFacetIds(SearchQuery query, java.util.Set<String> expected) throws Exception {

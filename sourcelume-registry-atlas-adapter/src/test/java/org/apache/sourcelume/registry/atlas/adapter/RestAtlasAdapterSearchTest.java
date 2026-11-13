@@ -102,10 +102,17 @@ class RestAtlasAdapterSearchTest {
         // Without the explicit attributes list Atlas returns headers only
         // and callers would see empty documents.
         JsonNode attributes = body.path("attributes");
-        assertTrue(attributes.isArray() && attributes.size() == 16, "the lifecycle attributes must be requested");
-        for (String wanted :
-                new String[] {"rawJsonLd", "recordStatus", "registryRevision", "recordAttachments", "recordAttributes"
-                }) {
+        assertTrue(attributes.isArray(), "the lifecycle attributes must be requested");
+        for (String wanted : new String[] {
+            "rawJsonLd",
+            "recordStatus",
+            "registryRevision",
+            "recordAttachments",
+            "recordAttributes",
+            "recordFacets",
+            "recordFacetTokens",
+            "recordFacetIndex"
+        }) {
             boolean listed = false;
             for (JsonNode attribute : attributes) {
                 listed = listed || wanted.equals(attribute.asText());
@@ -493,14 +500,20 @@ class RestAtlasAdapterSearchTest {
         assertEquals(3, filter.path("criterion").size());
         JsonNode datasets = filter.path("criterion").get(1);
         assertEquals("OR", datasets.path("condition").asText());
-        assertEquals(2, datasets.path("criterion").size());
+        assertEquals(4, datasets.path("criterion").size());
+        assertEquals(
+                "recordFacetTokens",
+                datasets.path("criterion").get(0).path("attributeName").asText());
         assertEquals(
                 "recordFacetIndex",
-                datasets.path("criterion").get(0).path("attributeName").asText());
+                datasets.path("criterion").get(1).path("attributeName").asText());
         assertEquals(
                 "contains", datasets.path("criterion").get(0).path("operator").asText());
         assertEquals(
                 AtlasFacetIndex.token(org.apache.sourcelume.registry.spi.RecordFacet.TRAINING_DATASET, "urn:data:A"),
                 datasets.path("criterion").get(0).path("attributeValue").asText());
+        assertEquals(
+                datasets.path("criterion").get(0).path("attributeValue"),
+                datasets.path("criterion").get(1).path("attributeValue"));
     }
 }

@@ -30,6 +30,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.sourcelume.registry.atlas.adapter.AtlasAdapter.TypeDefinitionModel;
 import org.apache.sourcelume.registry.atlas.adapter.config.SourcelumeAtlasProperties;
 import org.apache.sourcelume.registry.atlas.adapter.exception.AtlasAdapterException;
@@ -81,6 +82,48 @@ class RestAtlasAdapterTest {
     @Test
     void shouldThrowWhenTypeDefsResourceMissing() {
         assertThrows(AtlasAdapterException.class, () -> adapter.loadTypeDefs("nonexistent/path/model.json"));
+    }
+
+    @Test
+    void facetTokensDoNotCreateGraphCompositeIndexes() throws Exception {
+        var definitions = objectMapper.readTree(
+                adapter.loadTypeDefs("models/sourcelume/sourcelume_model.json").getRawJson());
+        for (var entity : definitions.path("entityDefs")) {
+            var attributes = new java.util.HashMap<String, com.fasterxml.jackson.databind.JsonNode>();
+            entity.path("attributeDefs")
+                    .forEach(attribute -> attributes.put(attribute.path("name").asText(), attribute));
+            var tokens = attributes.get("recordFacetTokens");
+            assertNotNull(tokens);
+            assertEquals("DEFAULT", tokens.path("indexType").asText());
+            assertFalse(tokens.path("isIndexable").asBoolean(true));
+            assertFalse(tokens.path("isUnique").asBoolean(true));
+            assertFalse(attributes.get("recordFacetIndex").path("isIndexable").asBoolean(true));
+        }
+    }
+
+    @Test
+    void recordWritesMoveFacetTokensAndClearTheLegacyIndex() throws Exception {
+        AtomicReference<String> request = new AtomicReference<>();
+        server.createContext("/", exchange -> {
+            request.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] response = "{\"guidAssignments\":{\"-1\":\"record-guid\"}}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        for (String tokens :
+                java.util.List.of(("a".repeat(64) + " ").repeat(161).trim(), "")) {
+            SourcelumeDatasetDto dataset = new SourcelumeDatasetDto();
+            dataset.setQualifiedName("urn:facet-replacement");
+            dataset.setName("facets");
+            dataset.setRegistryRevision("replacement-revision");
+            dataset.setRecordFacetIndex(tokens);
+            adapter.createOrUpdateRecordEntity(dataset);
+            var attributes =
+                    objectMapper.readTree(request.get()).path("entities").get(0).path("attributes");
+            assertEquals(tokens, attributes.path("recordFacetTokens").asText());
+            assertTrue(attributes.path("recordFacetIndex").isNull(), "The old index must be explicitly cleared");
+        }
     }
 
     @Test
