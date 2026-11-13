@@ -295,8 +295,8 @@ does not infer the model's license from those datasets or verify the claim.
 Facet filters are available through the Java SPI; this phase adds no HTTP
 search endpoint.
 
-Atlas stores the original values in `recordFacets`. Its indexed
-`recordFacetIndex` contains one fixed-width SHA-256 token per `(facet, value)`
+Atlas stores the original values in `recordFacets`. Its Solr-indexed
+`recordFacetTokens` contains one fixed-width SHA-256 token per `(facet, value)`
 pair, with the facet name and value separated by a newline before hashing. Tokens
 are separated by spaces in a text index, and native `contains` filters match a
 whole 64-character hexadecimal token. Fixed width and separators prevent prefix
@@ -305,6 +305,22 @@ Atlas 2.5 does not create a searchable primitive-array index, so the plugin uses
 its supported text-index path rather than an `array<string>` attribute.
 The tokens are an internal search representation, not document digests or
 signatures. Both fields are replaced in the same entity mutation.
+
+`recordFacetTokens` uses `indexType: DEFAULT` and `isIndexable: false`. In Atlas
+2.5, the default string mapping still receives a Solr text index;
+`isIndexable: false` disables the additional JanusGraph composite index. That
+composite index encodes the entire string in a storage key, which can exceed
+PostgreSQL's B-tree index-entry limit when a record names many datasets.
+
+Earlier versions wrote `recordFacetIndex` with a composite index. Changing a
+typedef does not remove that existing graph index, so new writes use the new
+attribute and clear `recordFacetIndex` in the same update. Search accepts tokens
+from either attribute before applying the limit. Existing records remain
+searchable without rewriting validated documents; a correction replaces their
+projection and removes the old tokens. Initialize the updated typedefs before
+using this version, including when automatic bootstrap is disabled. The former
+writer must be stopped before the new writer starts, as required by the Atlas
+single-writer deployment contract.
 
 Older entities without these fields remain readable but have no facet snapshot
 or facet index. New writes populate both; schema initialization alone does not
@@ -377,7 +393,7 @@ IRI in `qualifiedName`; GUIDs and Atlas entity type names stay outside the SPI.
 | Exact document | Existing non-indexed `rawJsonLd` and `sha256` |
 | Validation metadata | Existing `recordStatus`, `validationIssues`, `validatedBy`, `validatedAt` |
 | Presentation/search attributes | Existing native attributes, plus optional non-indexed `recordAttributes` containing their lossless snapshot |
-| Facets | Non-indexed `recordFacets` snapshot plus indexed `recordFacetIndex` text field |
+| Facets | `recordFacets` snapshot plus Solr TEXT-indexed `recordFacetTokens`; reads also support the previous `recordFacetIndex` projection |
 | Opaque revision | Optional non-indexed `registryRevision`, generated for each new write |
 | Attachment set | Optional non-indexed `recordAttachments`, JSON with base64 payloads |
 

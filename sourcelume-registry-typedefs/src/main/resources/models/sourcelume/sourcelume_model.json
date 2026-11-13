@@ -131,7 +131,16 @@
           "typeName": "string",
           "cardinality": "SINGLE",
           "isOptional": true,
-          "isIndexable": true,
+          "isIndexable": false,
+          "isUnique": false
+        },
+        {
+          "name": "recordFacetTokens",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isOptional": true,
+          "isIndexable": false,
+          "indexType": "DEFAULT",
           "isUnique": false
         }
       ]
@@ -259,7 +268,16 @@
           "typeName": "string",
           "cardinality": "SINGLE",
           "isOptional": true,
-          "isIndexable": true,
+          "isIndexable": false,
+          "isUnique": false
+        },
+        {
+          "name": "recordFacetTokens",
+          "typeName": "string",
+          "cardinality": "SINGLE",
+          "isOptional": true,
+          "isIndexable": false,
+          "indexType": "DEFAULT",
           "isUnique": false
         }
       ]
