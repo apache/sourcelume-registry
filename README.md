@@ -35,11 +35,13 @@ repo creation, and initial discussion") the codebase is organized as a
 | `sourcelume-registry-validation-jsonschema` | Validation plugin: "json-schema" stage (networknt, draft 2020-12, format assertions) |
 | `sourcelume-registry-validation-shacl` | Validation plugin: "shacl" stage (Apache Jena, offline context inlining) |
 | `sourcelume-registry-atlas-adapter` | Atlas storage plugin, REST transport and mapping to the existing dataset/model entities; owns its schema initialization |
-| `sourcelume-registry-runtime-quarkus` | Quarkus REST runtime: dataset and type REST APIs (`/api/v1/datasets`, `/api/v1/types`), ingest endpoints (`POST /records`, `GET /records/{id}`, `GET /records/{id}/document`), pre-flight validation endpoint, startup bootstrap (spec verification + typedef registration), SmallRye Health readiness, Docker packaging |
+| `sourcelume-registry-runtime-quarkus` | Reusable Quarkus runtime JAR: record API, validation, SPI configuration, initialization, health and shutdown; no storage implementation dependency |
+| `sourcelume-registry-distribution-atlas` | Atlas-specific dataset/type HTTP routes and error mapping; assembles the runtime and Atlas storage plugin into a runnable Quarkus application and Docker image |
+| `tests/storage-distribution` | Test-only packaged application proving the record API runs without Atlas libraries or type definitions |
 
 Runtime modules build on the framework-free core as separate modules and own
 their framework dependencies (the Quarkus BOM is imported in the runtime
-module only). Validation follows the same principle: the core defines the
+and distribution modules). Validation follows the same principle: the core defines the
 `RecordValidator` chain, the plugin modules own their validation machinery
 (networknt, Jena) — see [docs/validation.md](docs/validation.md) for the
 architecture, the shipped stages, and the parity rationale against the
@@ -67,7 +69,7 @@ Against a local Atlas (default `http://localhost:21000`, see
 `dev-support/README.md` for standing one up):
 
 ```bash
-mvn -pl sourcelume-registry-runtime-quarkus quarkus:dev
+mvn -pl sourcelume-registry-distribution-atlas quarkus:dev
 ```
 
 Or as a container next to Atlas via the shared `sourcelume-network`:
@@ -86,13 +88,14 @@ docker compose up -d
 - OpenAPI document: `http://localhost:8082/q/openapi`
 - Swagger UI: `http://localhost:8082/q/swagger-ui`
 
-Select a storage provider with `sourcelume.storage.provider` (default `atlas`).
+Each distribution selects a packaged provider with `sourcelume.storage.provider`.
+The Atlas distribution defaults to `atlas`; the reusable runtime has no backend default.
 Atlas connection settings remain under `sourcelume.atlas.*`
-(`sourcelume-registry-runtime-quarkus/src/main/resources/application.properties`).
+(`sourcelume-registry-distribution-atlas/src/main/resources/application.properties`).
 
 ### REST API Endpoints
 
-The Quarkus runtime exposes REST endpoints on port `8082`:
+The Atlas distribution exposes these REST endpoints on port `8082`:
 
 #### Datasets (`/api/v1/datasets`)
 

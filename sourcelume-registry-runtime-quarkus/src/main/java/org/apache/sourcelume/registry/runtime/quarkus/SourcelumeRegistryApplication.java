@@ -23,8 +23,8 @@ import io.quarkus.runtime.annotations.QuarkusMain;
 /**
  * Quarkus entry point for the Sourcelume Registry runtime.
  *
- * <p>The actual startup work (spec verification + typedef registration) happens
- * in {@code AtlasBootstrapObserver}, observing the CDI startup event, followed
+ * <p>The actual startup work (spec verification + selected storage initialization) happens
+ * in {@code StorageBootstrap}, observing the CDI startup event, followed
  * by the readiness check contributed to SmallRye Health.
  */
 @QuarkusMain

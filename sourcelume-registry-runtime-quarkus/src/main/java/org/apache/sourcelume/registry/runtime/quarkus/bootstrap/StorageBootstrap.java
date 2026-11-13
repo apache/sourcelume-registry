@@ -41,8 +41,7 @@ public class StorageBootstrap {
     }
 
     void start(@Observes StartupEvent event) {
-        String provider = config.getOptionalValue("sourcelume.storage.provider", String.class)
-                .orElse("atlas");
+        String provider = config.getValue("sourcelume.storage.provider", String.class);
         String prefix = "sourcelume." + provider + ".";
         String contextResource = config.getOptionalValue("sourcelume.spec-context-resource", String.class)
                 .orElseGet(() -> config.getOptionalValue(prefix + "spec-context-resource", String.class)

@@ -177,7 +177,7 @@ the opt-in integration tests. These require the vendored Atlas tooling, a
 locally built `atlas:latest` image, and a reachable Docker daemon:
 
 ```bash
-mvn verify -Pintegration-tests -pl sourcelume-registry-runtime-quarkus
+mvn verify -Pintegration-tests -pl sourcelume-registry-distribution-atlas
 ```
 
 See the

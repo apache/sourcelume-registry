@@ -121,7 +121,7 @@ if [ -z "${HEALTH_JSON}" ]; then
   echo -e "\n${RED}✗ Failed to connect to Sourcelume Registry at ${REGISTRY_URL}.${RESET}"
   echo -e "${YELLOW}Please ensure Apache Atlas and Sourcelume Registry are running:${RESET}"
   echo -e "  1. Start Atlas:    cd dev-support && docker compose -f docker-compose.atlas.yml up -d"
-  echo -e "  2. Start Registry: mvn -pl sourcelume-registry-runtime-quarkus quarkus:dev"
+  echo -e "  2. Start Registry: mvn -pl sourcelume-registry-distribution-atlas quarkus:dev"
   exit 1
 fi
 

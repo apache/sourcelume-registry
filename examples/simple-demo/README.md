@@ -64,7 +64,7 @@ cd dev-support
 docker compose -f docker-compose.atlas.yml up -d
 
 # Terminal 2: Start Quarkus Registry runtime (from project root)
-mvn -pl sourcelume-registry-runtime-quarkus quarkus:dev
+mvn -pl sourcelume-registry-distribution-atlas quarkus:dev
 ```
 
 ### 2. Run the Demo Script
