@@ -80,7 +80,7 @@ import org.slf4j.LoggerFactory;
  * document without a usable {@code id} or a body that is not valid
  * UTF-8 is {@code 400}; an unknown record on GET is {@code 404}; a
  * failed backend call is {@code 503} or {@code 502} (see
- * {@code BackendFailureMapper}).
+ * {@code StorageFailureMapper}).
  */
 @Path("/records")
 @Tag(name = "Records", description = "Submit provenance records and read their verdicts")

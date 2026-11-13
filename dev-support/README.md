@@ -19,7 +19,7 @@
 
 This directory provides local developer infrastructure to stand up an Apache Atlas
 backend and develop/test the Sourcelume Registry Quarkus runtime
-(`sourcelume-registry-runtime-quarkus`) against it.
+(`sourcelume-registry-distribution-atlas`) against it.
 
 ---
 
@@ -230,11 +230,11 @@ export SOURCELUME_ATLAS_USER=admin
 export SOURCELUME_ATLAS_PASSWORD=atlasR0cks!
 
 # Run the Quarkus runtime in dev mode
-mvn -pl sourcelume-registry-runtime-quarkus quarkus:dev
+mvn -pl sourcelume-registry-distribution-atlas quarkus:dev
 ```
 
 Or run/debug `org.apache.sourcelume.registry.runtime.quarkus.SourcelumeRegistryApplication`
-from your IDE.
+from your IDE using the Atlas distribution module's classpath.
 
 ---
 
@@ -377,7 +377,7 @@ docker compose -f docker-compose.atlas.yml down
 
 `mvn verify -Pintegration-tests` boots the vendored Atlas stack through
 Testcontainers and runs the end-to-end pipeline tests (`*IT`, see
-`sourcelume-registry-runtime-quarkus/src/.../it/`). Prerequisites: the
+`sourcelume-registry-distribution-atlas/src/.../it/`). Prerequisites: the
 vendored tooling and the locally built `atlas:latest` image (the steps
 above), plus a reachable Docker daemon.
 
@@ -390,11 +390,11 @@ stack is stopped explicitly by the test resource anyway):
 ```bash
 export DOCKER_HOST=unix://<path-to-your-docker-socket>
 export TESTCONTAINERS_RYUK_DISABLED=true
-mvn verify -Pintegration-tests -pl sourcelume-registry-runtime-quarkus
+mvn verify -Pintegration-tests -pl sourcelume-registry-distribution-atlas
 ```
 
 The API version pin for the docker client lives in
-`sourcelume-registry-runtime-quarkus/src/test/resources/docker-java.properties`.
+`sourcelume-registry-distribution-atlas/src/test/resources/docker-java.properties`.
 If compose output is needed while debugging, add
 `-Dquarkus.log.console.level=INFO`.
 

@@ -26,8 +26,6 @@ public class MemoryStorageProfile implements QuarkusTestProfile {
                 "memory",
                 "sourcelume.storage.require-atomic-writes",
                 "true",
-                "sourcelume.atlas.url",
-                "invalid-atlas-url",
                 "sourcelume.storage.bootstrap-on-startup",
                 "true");
     }

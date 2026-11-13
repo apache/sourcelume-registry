@@ -20,10 +20,10 @@ limitations under the License.
 ## Scope
 
 The Registry's ingest and record retrieval paths use a backend-independent
-storage contract. Atlas is the default provider in the Quarkus distribution.
+storage contract. Atlas is the default provider in the Atlas distribution.
 Another provider implements the same SPI without depending on Atlas or Core.
 
-This implementation retains the existing HTTP routes, validation status codes,
+The Atlas distribution retains the existing HTTP routes, validation status codes,
 top-level response fields, and Atlas dataset/model entities. The storage schema
 gains optional attributes for revisions, attachments, lossless presentation
 attributes and exact-match facet indexes. DataHub integration, graph query
@@ -39,7 +39,31 @@ indexed Atlas attributes remain available; extracting the SPI does not remove th
 | `sourcelume-registry-common` | Spec DTOs, parsers, resource loading and existing catalog response DTOs | SPI |
 | `sourcelume-registry-core` | Validation, submission policy, plugin selection | SPI, Common |
 | `sourcelume-registry-atlas-adapter` | Atlas provider, REST transport, schema initialization and entity mapping | SPI, Common, Typedefs |
-| `sourcelume-registry-runtime-quarkus` | HTTP, configuration, CDI wiring, startup, readiness and shutdown | Core and the plugins included in the distribution |
+| `sourcelume-registry-runtime-quarkus` | Reusable HTTP runtime, SPI configuration, CDI wiring, startup, readiness and shutdown | Core, SPI, Common and validators; no storage implementation |
+| `sourcelume-registry-distribution-atlas` | Atlas dataset/type HTTP routes, Atlas error mapping, provider configuration, executable Quarkus application and Docker packaging | Generic runtime and Atlas adapter |
+
+The runtime is an ordinary JAR with a bean archive descriptor. The Atlas
+distribution owns its catalog HTTP routes, provider configuration and Quarkus
+build. To assemble another provider, depend on the generic runtime
+and that provider, set `sourcelume.storage.provider`, and build the application
+in the distribution module. Neither the Atlas adapter nor its typedefs are
+required by the generic runtime.
+
+Shared HTTP defaults live in the runtime's `META-INF/microprofile-config.properties`.
+The distribution's `application.properties` supplies its provider and connection
+defaults. The runtime requires an explicit provider selection; it does not fall
+back to Atlas. The Atlas distribution preserves the existing environment variables.
+
+```mermaid
+flowchart TD
+    AtlasDist[Atlas distribution] --> Runtime[Generic Quarkus runtime]
+    AtlasDist --> AtlasPlugin[Atlas storage plugin]
+    OtherDist[Another distribution] --> Runtime
+    OtherDist --> OtherPlugin[Selected storage plugin]
+    Runtime --> Core[Core and SPI]
+    AtlasPlugin --> SPI[Storage SPI]
+    OtherPlugin --> SPI
+```
 
 ```mermaid
 flowchart TD
@@ -66,7 +90,8 @@ and the existing Atlas catalog views, not an SPI for other metadata systems.
 
 ## Entry points and lifecycle
 
-1. `StorageProducer` reads `sourcelume.storage.provider`, defaulting to `atlas`.
+1. `StorageProducer` reads the required `sourcelume.storage.provider` setting.
+   The Atlas distribution supplies `atlas` as its default.
 2. `PluginLoader` finds exactly one matching `RegistryPluginProvider` through
    `ServiceLoader`. Missing or duplicate providers fail startup. Only the selected
    provider is opened.
@@ -87,7 +112,7 @@ The Atlas entry is `org.apache.sourcelume.registry.atlas.adapter.AtlasPluginProv
 
 | Configuration | Meaning |
 |---|---|
-| `sourcelume.storage.provider` | Selected provider ID; default `atlas` |
+| `sourcelume.storage.provider` | Required provider ID; the Atlas distribution defaults to `atlas` |
 | `sourcelume.storage.require-atomic-writes` | Reject providers that do not declare `ATOMIC_CONDITIONAL`; default `false` |
 | `sourcelume.storage.bootstrap-on-startup` | Whether to initialize the selected backend |
 | `sourcelume.storage.max-retries` | Initialization attempts; default `5` |
@@ -246,8 +271,10 @@ validation status and no failure flag.
 
 `POST /records/validate` retains its `422` negative verdict. Submission responses
 retain top-level `recordStatus`. Documents above the store limit return `413`.
-The Atlas GUID and typedef routes retain their Atlas formats; with another
-provider selected they return `404` through `AtlasCompatibilityProducer`.
+The Atlas distribution owns the GUID and typedef routes and retains their
+Atlas formats. Other distributions built from the generic runtime do not
+register these routes. Selecting another provider within the Atlas distribution
+makes these routes return `404` through `AtlasCompatibilityProducer`.
 
 ## Facet extraction and search
 
@@ -457,9 +484,21 @@ Core tests cover extraction from incomplete and malformed field shapes.
 
 Additional Atlas tests exercise delayed writes, failed condition reads, legacy
 revisions, corrupt digests and verification of the complete snapshot. The Quarkus
-memory-provider test selects a non-Atlas provider with an invalid Atlas URL and
-exercises the record API, negative validation verdict and readiness. Existing
-HTTP tests continue to cover response shapes and reference resolution.
+memory-provider test exercises the record API, negative validation verdict and
+readiness without Atlas on its classpath. A Maven dependency rule prevents Atlas
+implementation or typedef dependencies from returning to the generic runtime.
+Existing HTTP and OpenAPI snapshot tests run in the Atlas distribution and
+continue to cover response shapes and reference resolution.
+
+`tests/storage-distribution` packages a separate application with a test-only
+ServiceLoader provider. Its integration tests launch the built application and
+verify submission, correction, exact-byte retrieval, validation and readiness.
+Coverage includes validated records, immutable-write conflicts, document digests
+and resolution of training dataset references. The tests check that the package
+contains no Atlas libraries or typedefs and
+that its OpenAPI document does not advertise Atlas catalog routes. These tests
+run during ordinary `mvn verify` without Docker. The fixture uses the TCK's
+in-memory store and is not a production storage distribution.
 
 ```bash
 mvn clean verify

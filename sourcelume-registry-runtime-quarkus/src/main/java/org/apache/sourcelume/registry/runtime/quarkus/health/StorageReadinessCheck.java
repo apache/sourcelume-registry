@@ -35,8 +35,7 @@ public class StorageReadinessCheck implements HealthCheck {
     public StorageReadinessCheck(RegistryPlugin plugin, StorageBootstrap bootstrap, Config config) {
         this.plugin = plugin;
         this.bootstrap = bootstrap;
-        provider = config.getOptionalValue("sourcelume.storage.provider", String.class)
-                .orElse("atlas");
+        provider = config.getValue("sourcelume.storage.provider", String.class);
     }
 
     @Override

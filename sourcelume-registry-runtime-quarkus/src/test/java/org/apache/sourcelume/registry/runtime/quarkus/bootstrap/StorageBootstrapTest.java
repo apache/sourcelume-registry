@@ -52,7 +52,8 @@ class StorageBootstrapTest {
     }
 
     private static Config config(String... entries) {
-        SmallRyeConfigBuilder builder = new SmallRyeConfigBuilder();
+        SmallRyeConfigBuilder builder =
+                new SmallRyeConfigBuilder().withDefaultValue("sourcelume.storage.provider", "memory");
         for (int i = 0; i < entries.length; i += 2) builder.withDefaultValue(entries[i], entries[i + 1]);
         return builder.build();
     }

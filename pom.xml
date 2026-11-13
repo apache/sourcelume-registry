@@ -47,9 +47,12 @@
     <module>sourcelume-registry-validation-jsonschema</module>
     <module>sourcelume-registry-validation-shacl</module>
     <!-- Runtime modules own their framework dependencies; the parent stays
-             framework-free. The Quarkus runtime imports the Quarkus BOM in its
-             own dependencyManagement. -->
+             framework-free. Runtime and distribution modules import their own
+             Quarkus BOM. -->
     <module>sourcelume-registry-runtime-quarkus</module>
+    <module>sourcelume-registry-distribution-atlas</module>
+    <!-- Packages and runs a provider-only application without Atlas. -->
+    <module>tests/storage-distribution</module>
   </modules>
 
   <properties>
@@ -170,6 +173,11 @@
       <dependency>
         <groupId>org.apache.sourcelume</groupId>
         <artifactId>sourcelume-registry-validation-shacl</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.sourcelume</groupId>
+        <artifactId>sourcelume-registry-runtime-quarkus</artifactId>
         <version>${project.version}</version>
       </dependency>
     </dependencies>

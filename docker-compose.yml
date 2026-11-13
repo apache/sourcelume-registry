@@ -28,7 +28,7 @@ networks:
 services:
   registry:
     build:
-      context: ./sourcelume-registry-runtime-quarkus
+      context: ./sourcelume-registry-distribution-atlas
       dockerfile: Dockerfile
     image: apache/sourcelume-registry-runtime-quarkus:0.0.1
     container_name: sourcelume-registry-quarkus

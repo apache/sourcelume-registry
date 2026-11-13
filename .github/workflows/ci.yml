@@ -72,10 +72,12 @@ jobs:
         working-directory: registry
         run: mvn -B verify
 
-      - name: Upload surefire reports
+      - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: surefire-reports
-          path: registry/**/target/surefire-reports/
+          name: test-reports
+          path: |
+            registry/**/target/surefire-reports/
+            registry/**/target/failsafe-reports/
           if-no-files-found: ignore

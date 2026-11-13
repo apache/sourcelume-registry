@@ -1,0 +1,22 @@
+{
+  "@context": "https://sourcelume.apache.org/context/0.0.1/sourcelume.jsonld",
+  "id": "https://sourcelume.apache.org/records/assembly-training",
+  "type": "TrainingProvenanceRecord",
+  "identifier": "https://example.org/models/it-model",
+  "name": "IT model",
+  "version": "v1",
+  "creator": [
+    {
+      "type": "schema:Organization",
+      "name": "Example Organization"
+    }
+  ],
+  "created": "2026-10-13T00:00:00Z",
+  "disclosure": "complete",
+  "trainingData": [
+    {
+      "dataset": "https://sourcelume.apache.org/records/assembly-valid",
+      "phase": "pretraining"
+    }
+  ]
+}

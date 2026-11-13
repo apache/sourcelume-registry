@@ -42,8 +42,7 @@ public class StorageProducer {
     @Singleton
     @DefaultBean
     public RegistryPlugin plugin() {
-        String id = config.getOptionalValue("sourcelume.storage.provider", String.class)
-                .orElse("atlas");
+        String id = config.getValue("sourcelume.storage.provider", String.class);
         boolean requireAtomic = config.getOptionalValue("sourcelume.storage.require-atomic-writes", Boolean.class)
                 .orElse(false);
         RegistryPlugin plugin = PluginLoader.open(
