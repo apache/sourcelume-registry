@@ -141,6 +141,28 @@ mkdir -p "${HOME}/.m2"
 docker compose -f docker-compose.atlas-build.yml up
 ```
 
+### Running the registry with the PostgreSQL storage plugin
+
+The `postgres` storage provider needs its own PostgreSQL instance — independent
+of the Atlas stack (`atlas-db` belongs to Apache Atlas itself).
+
+```bash
+cd dev-support
+docker compose -f docker-compose.postgres.yml up -d --wait
+```
+
+Then point the registry at it:
+
+```bash
+export SOURCELUME_STORAGE_PROVIDER=postgres
+export SOURCELUME_POSTGRES_JDBC_URL=jdbc:postgresql://localhost:55432/sourcelume_registry
+export SOURCELUME_POSTGRES_USERNAME=sourcelume
+export SOURCELUME_POSTGRES_PASSWORD=sourcelume
+```
+
+The plugin applies its schema migrations on startup; see `docs/storage-spi.md`
+for the provider details and the storage contract.
+
 #### 4. Start Atlas with the PostgreSQL backend
 
 ```bash

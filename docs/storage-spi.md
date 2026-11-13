@@ -39,6 +39,7 @@ indexed Atlas attributes remain available; extracting the SPI does not remove th
 | `sourcelume-registry-common` | Spec DTOs, parsers, resource loading and existing catalog response DTOs | SPI |
 | `sourcelume-registry-core` | Validation, submission policy, plugin selection | SPI, Common |
 | `sourcelume-registry-atlas-adapter` | Atlas provider, REST transport, schema initialization and entity mapping | SPI, Common, Typedefs |
+| `sourcelume-registry-postgres` | PostgreSQL provider, JDBC storage, schema migrations and facet search | SPI |
 | `sourcelume-registry-runtime-quarkus` | Reusable HTTP runtime, SPI configuration, CDI wiring, startup, readiness and shutdown | Core, SPI, Common and validators; no storage implementation |
 | `sourcelume-registry-distribution-atlas` | Atlas dataset/type HTTP routes, Atlas error mapping, provider configuration, executable Quarkus application and Docker packaging | Generic runtime and Atlas adapter |
 
@@ -64,6 +65,7 @@ flowchart TD
     AtlasPlugin --> SPI[Storage SPI]
     OtherPlugin --> SPI
 ```
+
 
 ```mermaid
 flowchart TD
@@ -472,6 +474,30 @@ Recovery is an operator action: stop writes, establish that outstanding Atlas
 mutations have finished or been stopped, inspect the attempted revision and full
 stored snapshot, then restart the Registry to resume writes. The quarantine is
 process-local. **Restarting alone does not reconcile an uncertain operation.**
+
+## PostgreSQL provider
+
+The `postgres` provider stores records in a PostgreSQL database over plain
+JDBC. It declares `ATOMIC_CONDITIONAL`: every write runs in one transaction
+that covers the record row and its facets, attachments and validation issues,
+so the outcome of a committed write is definitive and `UNKNOWN_WRITE` never
+occurs.
+
+| Aspect | Behavior |
+|---|---|
+| Provider id | `postgres` (select with `sourcelume.storage.provider=postgres`) |
+| Connection | `sourcelume.postgres.jdbc-url`, `sourcelume.postgres.username`, `sourcelume.postgres.password` |
+| Schema | Owned exclusively by the plugin; versioned migrations from `META-INF` classpath resources applied once per database, tracked in `schema_history` |
+| Creates | `INSERT ... ON CONFLICT (id) DO NOTHING`; concurrent creators have exactly one winner |
+| Corrections | `SELECT ... FOR UPDATE` serializes writers per record id, then `UPDATE ... WHERE id = ?`; revision comparison happens on the locked row |
+| Batch reads | `WHERE id = ANY(?)` in one indexed query |
+| Facet search | Strongly consistent; the facet tables are written in the same transaction as the record row |
+| Revision | Opaque UUID string, new on every successful write |
+
+The relational layout keeps the original document bytes (`bytea`), so the
+byte-exact round trip and the document endpoint work without any re-encoding.
+Attachment ordering and validation issue ordering are preserved through
+explicit ordinal columns.
 
 ## Verification
 
