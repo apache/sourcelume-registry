@@ -30,7 +30,7 @@
 
   <properties>
     <postgresql.version>42.7.7</postgresql.version>
-    <testcontainers.version>1.21.3</testcontainers.version>
+    <testcontainers.version>1.21.4</testcontainers.version>
   </properties>
 
   <dependencies>
