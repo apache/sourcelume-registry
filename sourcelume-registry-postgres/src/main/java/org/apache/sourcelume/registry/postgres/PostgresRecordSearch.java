@@ -39,8 +39,10 @@ final class PostgresRecordSearch implements RecordSearch {
     @Override
     public List<StoredRecord> search(SearchQuery query) {
         plugin.checkOpen();
-        try (Connection connection = plugin.openConnection()) {
-            return RecordMapper.search(connection, query);
+        try (Connection connection = plugin.openSnapshotConnection()) {
+            List<StoredRecord> records = RecordMapper.search(connection, query);
+            connection.commit();
+            return records;
         } catch (SQLException e) {
             throw new StorageException(StorageException.Code.BACKEND_ERROR, "Search failed", e);
         }

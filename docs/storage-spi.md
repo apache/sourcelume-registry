@@ -480,8 +480,10 @@ process-local. **Restarting alone does not reconcile an uncertain operation.**
 The `postgres` provider stores records in a PostgreSQL database over plain
 JDBC. It declares `ATOMIC_CONDITIONAL`: every write runs in one transaction
 that covers the record row and its facets, attachments and validation issues,
-so the outcome of a committed write is definitive and `UNKNOWN_WRITE` never
-occurs.
+so the outcome of a committed write is definitive. Reads run in one
+`REPEATABLE READ` snapshot, so a record and its children are never mixed
+across concurrent corrections. The one uncertain case is a lost commit
+acknowledgement, which surfaces as `UNKNOWN_WRITE`.
 
 | Aspect | Behavior |
 |---|---|

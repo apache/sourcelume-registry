@@ -78,7 +78,14 @@ final class PostgresPlugin implements RegistryPlugin {
 
     @Override
     public boolean isReady() {
-        return ready && !closed;
+        if (!ready || closed) {
+            return false;
+        }
+        try (Connection connection = openConnection()) {
+            return connection.isValid(2);
+        } catch (SQLException | StorageException e) {
+            return false;
+        }
     }
 
     @Override
@@ -102,6 +109,18 @@ final class PostgresPlugin implements RegistryPlugin {
         }
     }
 
+    /**
+     * Opens a read-only transaction whose statements all share one snapshot, so a
+     * record's row and its facets, attachments and validation issues are read
+     * atomically even while another writer corrects the record.
+     */
+    Connection openSnapshotConnection() throws SQLException {
+        Connection connection = openConnection();
+        connection.setAutoCommit(false);
+        connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+        return connection;
+    }
+
     private void checkClosed() {
         if (closed) {
             throw new StorageException(StorageException.Code.UNAVAILABLE, "PostgreSQL plugin is closed");
@@ -119,13 +138,23 @@ final class PostgresPlugin implements RegistryPlugin {
             }
             LOG.info("Applying PostgreSQL schema migration {}", version);
             String sql = readResource(MIGRATIONS_PACKAGE + "/" + version);
-            try (Statement statement = connection.createStatement()) {
-                statement.execute(sql);
-            }
-            try (PreparedStatement applied =
-                    connection.prepareStatement("INSERT INTO schema_history (version) VALUES (?)")) {
-                applied.setString(1, version);
-                applied.executeUpdate();
+            // One transaction per migration: the DDL and its schema_history entry
+            // commit together, so a disconnect can never leave an applied migration
+            // unrecorded (which would fail the next startup with "relation already
+            // exists"). PostgreSQL DDL is transactional.
+            connection.setAutoCommit(false);
+            try {
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute(sql);
+                }
+                try (PreparedStatement applied =
+                        connection.prepareStatement("INSERT INTO schema_history (version) VALUES (?)")) {
+                    applied.setString(1, version);
+                    applied.executeUpdate();
+                }
+                connection.commit();
+            } finally {
+                connection.setAutoCommit(true);
             }
         }
     }

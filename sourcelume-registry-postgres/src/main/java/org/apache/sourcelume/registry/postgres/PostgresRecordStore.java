@@ -62,8 +62,10 @@ final class PostgresRecordStore implements RecordStore {
     public Optional<StoredRecord> get(String id) {
         plugin.checkOpen();
         requireId(id);
-        try (Connection connection = plugin.openConnection()) {
-            return Optional.ofNullable(RecordMapper.loadOne(connection, id));
+        try (Connection connection = plugin.openSnapshotConnection()) {
+            StoredRecord record = RecordMapper.loadOne(connection, id);
+            connection.commit();
+            return Optional.ofNullable(record);
         } catch (SQLException e) {
             throw new StorageException(StorageException.Code.BACKEND_ERROR, "Point read failed for " + id, e);
         }
@@ -80,8 +82,10 @@ final class PostgresRecordStore implements RecordStore {
         if (distinct.isEmpty()) {
             return Map.of();
         }
-        try (Connection connection = plugin.openConnection()) {
-            return RecordMapper.loadAll(connection, distinct);
+        try (Connection connection = plugin.openSnapshotConnection()) {
+            Map<String, StoredRecord> records = RecordMapper.loadAll(connection, distinct);
+            connection.commit();
+            return records;
         } catch (SQLException e) {
             throw new StorageException(StorageException.Code.BACKEND_ERROR, "Batch read failed", e);
         }
@@ -95,20 +99,26 @@ final class PostgresRecordStore implements RecordStore {
         String revision = UUID.randomUUID().toString();
         Connection connection = plugin.openConnection();
         try {
+            connection.setAutoCommit(false);
+            WriteResult result = request.condition() instanceof WriteCondition.Absent
+                    ? writeAbsent(connection, request, revision)
+                    : writeAtRevision(connection, request, revision);
             try {
-                connection.setAutoCommit(false);
-                WriteResult result = request.condition() instanceof WriteCondition.Absent
-                        ? writeAbsent(connection, request, revision)
-                        : writeAtRevision(connection, request, revision);
                 connection.commit();
-                return result;
-            } catch (SQLException | RuntimeException e) {
-                rollback(connection);
-                if (e instanceof RuntimeException runtime) {
-                    throw runtime;
-                }
-                throw new StorageException(StorageException.Code.BACKEND_ERROR, "Write failed", (SQLException) e);
+            } catch (SQLException commitFailed) {
+                // The transaction may already have committed server-side; the outcome
+                // is unknown, so the SPI's uncertain-outcome contract applies.
+                throw new StorageException(
+                        StorageException.Code.UNKNOWN_WRITE,
+                        "Commit outcome unknown for " + candidate.id(),
+                        commitFailed);
             }
+            return result;
+        } catch (SQLException e) {
+            rollback(connection);
+            throw new StorageException(StorageException.Code.BACKEND_ERROR, "Write failed", e);
+        } catch (RuntimeException e) {
+            throw e;
         } finally {
             close(connection);
         }
