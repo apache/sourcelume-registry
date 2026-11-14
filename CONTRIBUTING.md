@@ -79,8 +79,7 @@ request, or other public forum. Report it privately to
 - Git.
 - JDK 21.
 - Maven 3.9 or newer.
-- Docker and Docker Compose only for container-based development and
-  integration tests.
+- Docker for PostgreSQL tests; Docker Compose for container-based development.
 
 The registry currently depends on the `sourcelume-spec` snapshot artifact,
 which is not published to a Maven repository. Clone and install the spec before
@@ -164,9 +163,18 @@ repository root:
 mvn clean verify
 ```
 
-This compiles all modules, runs the unit tests, checks formatting and license
-headers, and runs Checkstyle. During development, a module and everything it
-depends on can be tested with:
+This compiles all modules, checks formatting and license headers, runs
+Checkstyle, and runs unit tests and packaged application tests. The PostgreSQL
+plugin contract tests and distribution tests start isolated PostgreSQL containers.
+The distribution tests exercise validation, record correction, immutable records,
+training references, and persistence across application restarts.
+
+To use an existing disposable test database instead of Docker, set
+`SOURCELUME_PG_TCK_JDBC_URL`, `SOURCELUME_PG_TCK_USERNAME`, and
+`SOURCELUME_PG_TCK_PASSWORD`. Use a dedicated database: the plugin contract tests
+drop and recreate its `public` schema.
+
+During development, a module and everything it depends on can be tested with:
 
 ```bash
 mvn -pl <module-name> -am test

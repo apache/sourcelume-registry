@@ -15,34 +15,36 @@
 # limitations under the License.
 #
 
-# Apache Sourcelume Registry — Quarkus runtime container.
-# The Apache Atlas backend is stood up via dev-support/ (see dev-support/README.md);
-# this compose runs the registry runtime connected to Atlas via the shared
-# `sourcelume-network`.
-
-networks:
-  sourcelume-network:
-    name: sourcelume-network
-    external: true
-
+# Default registry distribution, backed directly by PostgreSQL.
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: sourcelume_registry
+      POSTGRES_USER: sourcelume
+      POSTGRES_PASSWORD: ${SOURCELUME_POSTGRES_PASSWORD:-sourcelume}
+    volumes:
+      - registry-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sourcelume -d sourcelume_registry"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   registry:
     build:
-      context: ./sourcelume-registry-distribution-atlas
+      context: ./sourcelume-registry-distribution-postgres
       dockerfile: Dockerfile
-    image: apache/sourcelume-registry-runtime-quarkus:0.0.1
-    container_name: sourcelume-registry-quarkus
+    image: apache/sourcelume-registry-postgres:0.0.1
     environment:
-      SOURCELUME_ATLAS_URL: ${SOURCELUME_ATLAS_URL:-http://atlas:21000}
-      SOURCELUME_ATLAS_USER: ${SOURCELUME_ATLAS_USER:-admin}
-      SOURCELUME_ATLAS_PASSWORD: ${SOURCELUME_ATLAS_PASSWORD:-atlasR0cks!}
-      SOURCELUME_ATLAS_PASSWORD_FILE: ${SOURCELUME_ATLAS_PASSWORD_FILE:-}
-      SOURCELUME_ATLAS_BOOTSTRAP_ON_STARTUP: "true"
-      JAVA_OPTS: "-XX:+UseG1GC -XX:MaxRAMPercentage=75.0"
+      SOURCELUME_POSTGRES_JDBC_URL: jdbc:postgresql://postgres:5432/sourcelume_registry
+      SOURCELUME_POSTGRES_USERNAME: sourcelume
+      SOURCELUME_POSTGRES_PASSWORD: ${SOURCELUME_POSTGRES_PASSWORD:-sourcelume}
     ports:
       - "8082:8082"
-    networks:
-      - sourcelume-network
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8082/q/health/ready"]
       interval: 10s
@@ -50,3 +52,6 @@ services:
       retries: 3
       start_period: 30s
     restart: on-failure
+
+volumes:
+  registry-data:

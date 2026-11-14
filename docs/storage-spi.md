@@ -20,8 +20,8 @@ limitations under the License.
 ## Scope
 
 The Registry's ingest and record retrieval paths use a backend-independent
-storage contract. Atlas is the default provider in the Atlas distribution.
-Another provider implements the same SPI without depending on Atlas or Core.
+storage contract. PostgreSQL is the default distribution; Atlas is available
+as a separate distribution. Both providers implement the same SPI.
 
 The Atlas distribution retains the existing HTTP routes, validation status codes,
 top-level response fields, and Atlas dataset/model entities. The storage schema
@@ -41,6 +41,7 @@ indexed Atlas attributes remain available; extracting the SPI does not remove th
 | `sourcelume-registry-atlas-adapter` | Atlas provider, REST transport, schema initialization and entity mapping | SPI, Common, Typedefs |
 | `sourcelume-registry-postgres` | PostgreSQL provider, JDBC storage, schema migrations and facet search | SPI |
 | `sourcelume-registry-runtime-quarkus` | Reusable HTTP runtime, SPI configuration, CDI wiring, startup, readiness and shutdown | Core, SPI, Common and validators; no storage implementation |
+| `sourcelume-registry-distribution-postgres` | Default executable Quarkus application, PostgreSQL configuration and Docker packaging | Generic runtime and PostgreSQL plugin |
 | `sourcelume-registry-distribution-atlas` | Atlas dataset/type HTTP routes, Atlas error mapping, provider configuration, executable Quarkus application and Docker packaging | Generic runtime and Atlas adapter |
 
 The runtime is an ordinary JAR with a bean archive descriptor. The Atlas
@@ -59,11 +60,11 @@ back to Atlas. The Atlas distribution preserves the existing environment variabl
 flowchart TD
     AtlasDist[Atlas distribution] --> Runtime[Generic Quarkus runtime]
     AtlasDist --> AtlasPlugin[Atlas storage plugin]
-    OtherDist[Another distribution] --> Runtime
-    OtherDist --> OtherPlugin[Selected storage plugin]
+    PostgresDist[PostgreSQL distribution] --> Runtime
+    PostgresDist --> PostgresPlugin[PostgreSQL storage plugin]
     Runtime --> Core[Core and SPI]
     AtlasPlugin --> SPI[Storage SPI]
-    OtherPlugin --> SPI
+    PostgresPlugin --> SPI
 ```
 
 
@@ -93,7 +94,7 @@ and the existing Atlas catalog views, not an SPI for other metadata systems.
 ## Entry points and lifecycle
 
 1. `StorageProducer` reads the required `sourcelume.storage.provider` setting.
-   The Atlas distribution supplies `atlas` as its default.
+   The PostgreSQL and Atlas distributions default to `postgres` and `atlas`, respectively.
 2. `PluginLoader` finds exactly one matching `RegistryPluginProvider` through
    `ServiceLoader`. Missing or duplicate providers fail startup. Only the selected
    provider is opened.
@@ -114,8 +115,8 @@ The Atlas entry is `org.apache.sourcelume.registry.atlas.adapter.AtlasPluginProv
 
 | Configuration | Meaning |
 |---|---|
-| `sourcelume.storage.provider` | Required provider ID; the Atlas distribution defaults to `atlas` |
-| `sourcelume.storage.require-atomic-writes` | Reject providers that do not declare `ATOMIC_CONDITIONAL`; default `false` |
+| `sourcelume.storage.provider` | Required provider ID; defaults to `postgres` or `atlas` in the corresponding distribution |
+| `sourcelume.storage.require-atomic-writes` | Reject providers that do not declare `ATOMIC_CONDITIONAL`; `true` in the PostgreSQL distribution, otherwise `false` |
 | `sourcelume.storage.bootstrap-on-startup` | Whether to initialize the selected backend |
 | `sourcelume.storage.max-retries` | Initialization attempts; default `5` |
 | `sourcelume.storage.retry-delay-ms` | Delay between attempts; default `2000` |
@@ -501,12 +502,18 @@ byte-exact round trip and the document endpoint work without any re-encoding.
 Attachment ordering and validation issue ordering are preserved through
 explicit ordinal columns.
 
+The PostgreSQL distribution assembles this plugin with the shared runtime and
+validation plugins. It adds no HTTP resources or storage logic. The root
+`docker-compose.yml` starts the registry and PostgreSQL with a persistent named
+volume; `docker-compose.atlas.yml` retains the Atlas registry setup. See the
+[root README](../README.md#running-the-quarkus-runtime) for startup commands.
+
 ## Verification
 
 `RecordStoreContract` checks exact-byte round trips, absent attributes, complete
 replacement, attachment clearing, immutable types and validated records, stale
 revisions, concurrent creation/correction and close behavior. It runs against the
-independent memory store and the Atlas mapping with an isolated transport fixture.
+independent memory store, PostgreSQL, and the Atlas mapping with an isolated transport fixture.
 Facet contracts cover exact matching, AND/OR filters and clearing on replacement;
 Core tests cover extraction from incomplete and malformed field shapes.
 
@@ -527,6 +534,11 @@ contains no Atlas libraries or typedefs and
 that its OpenAPI document does not advertise Atlas catalog routes. These tests
 run during ordinary `mvn verify` without Docker. The fixture uses the TCK's
 in-memory store and is not a production storage distribution.
+
+The PostgreSQL distribution tests launch its fast-jar against PostgreSQL during
+`mvn verify`, exercise the record lifecycle and training references, then restart
+the application and verify that the records, document bytes and immutability
+remain intact. The package and HTTP routes are also checked for Atlas dependencies.
 
 ```bash
 mvn clean verify

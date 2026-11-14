@@ -15,13 +15,31 @@
     limitations under the License.
 -->
 
-# Sourcelume Dev Support: Apache Atlas & Quarkus Runtime
+# Sourcelume Dev Support: PostgreSQL & Apache Atlas
 
-This directory provides local developer infrastructure to stand up an Apache Atlas
-backend and develop/test the Sourcelume Registry Quarkus runtime
-(`sourcelume-registry-distribution-atlas`) against it.
+This directory provides local infrastructure for developing and testing the
+Sourcelume Registry with PostgreSQL or Apache Atlas.
 
 ---
+
+### PostgreSQL default distribution
+
+The default registry stores records directly in PostgreSQL and does not need
+Atlas. From the repository root, build with `mvn clean install`, then run
+`docker compose up -d --build --wait`.
+
+For host or IDE development, from the repository root:
+
+```bash
+docker compose -f dev-support/docker-compose.postgres.yml up -d --wait
+mvn -pl sourcelume-registry-distribution-postgres quarkus:dev
+```
+
+The distribution uses the development database on port `55432` by default.
+See the [root README](../README.md#running-the-quarkus-runtime) for connection
+settings. This database is independent of the Atlas stack's `atlas-db`.
+
+The remaining sections cover the Atlas distribution.
 
 ### Overview
 
@@ -141,28 +159,6 @@ mkdir -p "${HOME}/.m2"
 docker compose -f docker-compose.atlas-build.yml up
 ```
 
-### Running the registry with the PostgreSQL storage plugin
-
-The `postgres` storage provider needs its own PostgreSQL instance — independent
-of the Atlas stack (`atlas-db` belongs to Apache Atlas itself).
-
-```bash
-cd dev-support
-docker compose -f docker-compose.postgres.yml up -d --wait
-```
-
-Then point the registry at it:
-
-```bash
-export SOURCELUME_STORAGE_PROVIDER=postgres
-export SOURCELUME_POSTGRES_JDBC_URL=jdbc:postgresql://localhost:55432/sourcelume_registry
-export SOURCELUME_POSTGRES_USERNAME=sourcelume
-export SOURCELUME_POSTGRES_PASSWORD=sourcelume
-```
-
-The plugin applies its schema migrations on startup; see `docs/storage-spi.md`
-for the provider details and the storage contract.
-
 #### 4. Start Atlas with the PostgreSQL backend
 
 ```bash
@@ -236,11 +232,11 @@ Alternatives, in order of increasing trade-off:
 mvn clean package
 
 # 2. Build and start the registry container
-docker compose build
-docker compose up -d
+docker compose -f docker-compose.atlas.yml build
+docker compose -f docker-compose.atlas.yml up -d
 
 # 3. View logs
-docker compose logs -f registry
+docker compose -f docker-compose.atlas.yml logs -f registry
 ```
 
 #### Option B: Host / IDE (rapid development & debugging)
@@ -382,8 +378,10 @@ curl -u admin:atlasR0cks! -X DELETE http://localhost:21000/api/atlas/v2/types/ty
 
 #### Stop the Sourcelume container
 
+From the repository root:
+
 ```bash
-docker compose down
+docker compose -f docker-compose.atlas.yml down
 ```
 
 #### Stop the Apache Atlas stack

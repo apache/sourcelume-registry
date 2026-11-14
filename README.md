@@ -9,17 +9,16 @@ Per the dev-list consensus (September 2026, thread "Apache Sourcelume Registry
 repo creation, and initial discussion") the codebase is organized as a
 **framework-independent Core/API** with **Runtime modules** layered on top:
 
-- **Java 21 baseline** (latest LTS)
-- **Adapter isolation**: backend operations behind a backend-neutral
-  `AtlasAdapter` SPI; only Sourcelume types in the interface, no backend SDK
-  types in the core
+- **Java 21 baseline**
+- **Pluggable storage**: a JDK-only `RegistryPluginProvider` SPI, with
+  PostgreSQL as the default distribution and Apache Atlas as an alternative;
+  no backend SDK types in the core
 - **Pluggable record validation**: a `RecordValidator` SPI in the core;
   validation stages ship as separate plugin modules discovered via
   ServiceLoader, wired into the Quarkus runtime (fail-on-start) and exposed
   as a pre-flight `POST /records/validate` endpoint (see
-  [docs/validation.md](docs/validation.md)). The spec's record types are
-  supported end to end: `ProvenanceRecord` persists as `sourcelume_dataset`,
-  `TrainingProvenanceRecord` as `sourcelume_model` (see
+  [docs/validation.md](docs/validation.md)). The spec's `ProvenanceRecord` and
+  `TrainingProvenanceRecord` types are supported end to end (see
   [docs/ingest.md](docs/ingest.md))
 - **CDI-style runtime**, leaning Quarkus (see dev-list thread)
 
@@ -35,7 +34,9 @@ repo creation, and initial discussion") the codebase is organized as a
 | `sourcelume-registry-validation-jsonschema` | Validation plugin: "json-schema" stage (networknt, draft 2020-12, format assertions) |
 | `sourcelume-registry-validation-shacl` | Validation plugin: "shacl" stage (Apache Jena, offline context inlining) |
 | `sourcelume-registry-atlas-adapter` | Atlas storage plugin, REST transport and mapping to the existing dataset/model entities; owns its schema initialization |
+| `sourcelume-registry-postgres` | PostgreSQL storage plugin, JDBC persistence and schema migrations |
 | `sourcelume-registry-runtime-quarkus` | Reusable Quarkus runtime JAR: record API, validation, SPI configuration, initialization, health and shutdown; no storage implementation dependency |
+| `sourcelume-registry-distribution-postgres` | Default runnable Quarkus application and Docker image: shared runtime plus PostgreSQL storage plugin |
 | `sourcelume-registry-distribution-atlas` | Atlas-specific dataset/type HTTP routes and error mapping; assembles the runtime and Atlas storage plugin into a runnable Quarkus application and Docker image |
 | `tests/storage-distribution` | Test-only packaged application proving the record API runs without Atlas libraries or type definitions |
 
@@ -52,7 +53,7 @@ are described in [docs/storage-spi.md](docs/storage-spi.md).
 
 ## Building
 
-Requires JDK 21 and Maven 3.9+. The `sourcelume-spec` artifact must be
+Requires JDK 21, Maven 3.9+, and Docker for PostgreSQL tests. The `sourcelume-spec` artifact must be
 available (build `apache/sourcelume-spec` first with `mvn install`, see its
 SETUP.md).
 
@@ -65,19 +66,40 @@ On Windows, see the "Running on Windows" section of
 
 ## Running the Quarkus runtime
 
-Against a local Atlas (default `http://localhost:21000`, see
-`dev-support/README.md` for standing one up):
+The default distribution stores records directly in PostgreSQL. After building,
+start both services from the repository root:
 
 ```bash
-mvn -pl sourcelume-registry-distribution-atlas quarkus:dev
+docker compose up -d --build --wait
 ```
 
-Or as a container next to Atlas via the shared `sourcelume-network`:
+The API is available at `http://localhost:8082`. PostgreSQL data is kept in the
+`registry-data` named volume across container recreation. `docker compose down`
+keeps the data; `docker compose down -v` deletes it. The Compose setup uses local
+development credentials (`sourcelume`); set `SOURCELUME_POSTGRES_PASSWORD` before
+the first startup to use a different password.
+
+For host or IDE development, start only the development database:
 
 ```bash
-mvn clean package
-docker compose build
-docker compose up -d
+docker compose -f dev-support/docker-compose.postgres.yml up -d --wait
+mvn -pl sourcelume-registry-distribution-postgres quarkus:dev
+```
+
+The distribution defaults to `jdbc:postgresql://localhost:55432/sourcelume_registry`,
+with username and password `sourcelume`. Override these with
+`SOURCELUME_POSTGRES_JDBC_URL`, `SOURCELUME_POSTGRES_USERNAME`, and
+`SOURCELUME_POSTGRES_PASSWORD`. Schema migrations run automatically at startup.
+
+### Apache Atlas distribution
+
+To use Atlas, follow [dev-support/README.md](dev-support/README.md) to start Atlas,
+then run `mvn -pl sourcelume-registry-distribution-atlas quarkus:dev`.
+For the container setup on the shared `sourcelume-network`, use the separate
+Compose file from the repository root:
+
+```bash
+docker compose -f docker-compose.atlas.yml up -d --build --wait
 ```
 
 ### Health & Observability
@@ -89,13 +111,33 @@ docker compose up -d
 - Swagger UI: `http://localhost:8082/q/swagger-ui`
 
 Each distribution selects a packaged provider with `sourcelume.storage.provider`.
-The Atlas distribution defaults to `atlas`; the reusable runtime has no backend default.
-Atlas connection settings remain under `sourcelume.atlas.*`
-(`sourcelume-registry-distribution-atlas/src/main/resources/application.properties`).
+The PostgreSQL distribution defaults to `postgres` and requires atomic writes;
+the Atlas distribution defaults to `atlas`. The reusable runtime has no backend
+default. Each distribution owns its provider connection settings.
 
 ### REST API Endpoints
 
-The Atlas distribution exposes these REST endpoints on port `8082`:
+Both distributions expose the same record API on port `8082`:
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /records/validate` | Validate a record without storing it |
+| `POST /records` | Submit a record or correct an incomplete record |
+| `GET /records/{id}` | Read a record and its validation status |
+| `GET /records/{id}/document` | Retrieve the exact submitted bytes and SHA-256 ETag |
+
+For example, submit a record and use the returned `Location` header to read it:
+
+```bash
+curl -i -X POST http://localhost:8082/records \
+  -H "Content-Type: application/ld+json" \
+  --data-binary @examples/simple-demo/sample-provenance-record.jsonld
+```
+
+Encode the complete record ID as a path segment when constructing a read URL.
+See [docs/ingest.md](docs/ingest.md) for the record lifecycle.
+
+The following catalog endpoints are specific to the Atlas distribution:
 
 #### Datasets (`/api/v1/datasets`)
 
@@ -129,7 +171,7 @@ curl -s http://localhost:8082/api/v1/types/model | jq .
 
 ## Examples
 
-- **Simple Demo (`examples/simple-demo`)**: A self-contained, automated walkthrough (referencing the Community Over Code Glasgow 2026 Hackathon) demonstrating registry health verification, Atlas typedef inspection, dataset registration, and query resolution. See [examples/simple-demo/README.md](examples/simple-demo/README.md).
+- **Atlas Demo (`examples/simple-demo`)**: A self-contained, automated walkthrough (referencing the Community Over Code Glasgow 2026 Hackathon) demonstrating registry health verification, Atlas typedef inspection, dataset registration, and query resolution. See [examples/simple-demo/README.md](examples/simple-demo/README.md).
 
 ## Get involved
 
