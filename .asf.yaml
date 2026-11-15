@@ -19,8 +19,8 @@
 # This file only takes effect once it has landed on the default branch.
 # The context name below must match the job name in
 # .github/workflows/ci.yml exactly - a red CI therefore blocks every
-# merge into main. Merge buttons are deliberately left at the ASF
-# defaults until the project picks a merge policy on the dev list.
+# merge into main. The ruleset below requires squash merges for PRs
+# targeting main.
 
 github:
   description: "Apache Sourcelume Registry: reference registry for AI training-data provenance records"
@@ -34,6 +34,26 @@ github:
       required_status_checks:
         contexts:
           - "Maven verify (JDK 21)"
+
+  rulesets:
+    - name: "Squash merges on main"
+      target: branch
+      enforcement: active
+      conditions:
+        ref_name:
+          include:
+            - refs/heads/main
+          exclude: []
+      rules:
+        - type: pull_request
+          parameters:
+            allowed_merge_methods:
+              - squash
+            dismiss_stale_reviews_on_push: false
+            require_code_owner_review: false
+            require_last_push_approval: false
+            required_approving_review_count: 0
+            required_review_thread_resolution: false
 
 notifications:
   commits: commits@sourcelume.apache.org
