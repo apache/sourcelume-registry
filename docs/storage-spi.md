@@ -17,6 +17,9 @@ limitations under the License.
 
 # Metadata storage SPI
 
+For a working plugin project, Maven setup and runtime assembly, see the
+[plugin development guide](plugin-development.md).
+
 ## Scope
 
 The Registry's ingest and record retrieval paths use a backend-independent

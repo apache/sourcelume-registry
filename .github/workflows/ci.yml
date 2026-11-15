@@ -70,7 +70,15 @@ jobs:
 
       - name: Build and verify registry
         working-directory: registry
-        run: mvn -B verify
+        # Install the artifacts so the standalone example can consume them.
+        run: mvn -B install
+
+      - name: Verify standalone storage plugin example
+        working-directory: registry
+        run: |
+          cp -R examples/storage-plugin "${{ runner.temp }}/storage-plugin-example"
+          cd "${{ runner.temp }}/storage-plugin-example"
+          mvn -B verify
 
       - name: Upload test reports
         if: failure()
@@ -80,4 +88,6 @@ jobs:
           path: |
             registry/**/target/surefire-reports/
             registry/**/target/failsafe-reports/
+            ${{ runner.temp }}/storage-plugin-example/**/target/surefire-reports/
+            ${{ runner.temp }}/storage-plugin-example/**/target/failsafe-reports/
           if-no-files-found: ignore
