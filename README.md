@@ -50,6 +50,8 @@ Python reference validator (`sourcelume-spec` `tools/validate.py`).
 
 The storage interfaces, entry points, Atlas mapping and operational assumptions
 are described in [docs/storage-spi.md](docs/storage-spi.md).
+To write a storage plugin, follow the [plugin development guide](docs/plugin-development.md)
+and its [standalone example](examples/storage-plugin/README.md).
 
 ## Building
 

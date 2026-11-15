@@ -115,6 +115,10 @@ The repository layout and runtime commands are described in the
 exercising the Quarkus runtime are in the
 [developer-support guide](dev-support/README.md).
 
+Storage plugin authors can use the [plugin development guide](docs/plugin-development.md)
+and [standalone example](examples/storage-plugin/README.md). The example includes
+the storage contract tests and a packaged HTTP application test, and needs no Docker.
+
 ## Making a change
 
 Start each contribution from an up-to-date `main` and use a short-lived topic
@@ -156,8 +160,7 @@ work around a file that should have a license header.
 
 ## Building and testing
 
-Run the same verification command used by continuous integration from the
-repository root:
+Run the Registry verification from the repository root:
 
 ```bash
 mvn clean verify
@@ -168,6 +171,11 @@ Checkstyle, and runs unit tests and packaged application tests. The PostgreSQL
 plugin contract tests and distribution tests start isolated PostgreSQL containers.
 The distribution tests exercise validation, record correction, immutable records,
 training references, and persistence across application restarts.
+
+CI runs `mvn install`, which includes this verification, then builds and tests a
+copy of the standalone storage plugin example outside the Registry checkout.
+The example is not a root reactor module; follow its
+[build instructions](examples/storage-plugin/README.md#build-and-run) to run it locally.
 
 To use an existing disposable test database instead of Docker, set
 `SOURCELUME_PG_TCK_JDBC_URL`, `SOURCELUME_PG_TCK_USERNAME`, and

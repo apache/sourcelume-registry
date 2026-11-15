@@ -250,6 +250,11 @@
         <version>${spotless-maven-plugin.version}</version>
         <configuration>
           <java>
+            <includes>
+              <include>src/main/java/**/*.java</include>
+              <include>src/test/java/**/*.java</include>
+              <include>examples/storage-plugin/*/src/**/*.java</include>
+            </includes>
             <palantirJavaFormat/>
             <importOrder/>
             <removeUnusedImports/>
@@ -258,6 +263,10 @@
             </licenseHeader>
           </java>
           <pom>
+            <includes>
+              <include>pom.xml</include>
+              <include>examples/storage-plugin/**/pom.xml</include>
+            </includes>
             <sortPom>
               <expandEmptyElements>false</expandEmptyElements>
             </sortPom>
