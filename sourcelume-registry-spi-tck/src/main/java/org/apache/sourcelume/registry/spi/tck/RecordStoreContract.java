@@ -17,20 +17,28 @@
 package org.apache.sourcelume.registry.spi.tck;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.apache.sourcelume.registry.spi.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** Run against every provider; createPlugin must return an empty, isolated store. */
+/** Run against every provider; createPlugin must return an initialized, empty, isolated store. */
 public abstract class RecordStoreContract {
+    private static final int MAX_TEST_PAYLOAD_BYTES = 16 * 1024 * 1024;
+    private static final int MAX_TEST_ATTACHMENTS = 1024;
+
     protected RegistryPlugin plugin;
     protected RecordStore store;
 
@@ -247,11 +255,219 @@ public abstract class RecordStoreContract {
     }
 
     @Test
+    void documentLimitRejectsOversizedCreatesAndCorrections() {
+        int maximum = store.limits().maxDocumentBytes();
+        assumeTrue(maximum <= MAX_TEST_PAYLOAD_BYTES, "Configure a document limit of at most 16 MiB for this test");
+        RawDocument accepted = documentOfSize(maximum);
+        RawDocument rejected = documentOfSize(maximum + 1);
+        assertLimitEnforced(
+                limitRecord(accepted, smallAttachment(accepted), "original"),
+                limitRecord(rejected, smallAttachment(rejected), "rejected"));
+    }
+
+    @Test
+    void attachmentCountLimitRejectsOversizedCreatesAndCorrections() {
+        int maximum = store.limits().maxAttachments();
+        assumeTrue(
+                maximum <= MAX_TEST_ATTACHMENTS, "Configure an attachment count limit of at most 1024 for this test");
+        RawDocument document = documentOfSize(1);
+        var attachments = new ArrayList<RecordAttachment>();
+        for (int i = 0; i < maximum; i++) attachments.add(attachment(document, "part-" + i, 0));
+        RecordEnvelope accepted = limitRecord(document, attachments, "original");
+        attachments.add(attachment(document, "one-too-many", 0));
+        assertLimitEnforced(accepted, limitRecord(document, attachments, "rejected"));
+    }
+
+    @Test
+    void combinedAttachmentLimitRejectsOversizedCreatesAndCorrections() {
+        assumeTrue(store.limits().maxAttachments() > 0, "This store does not allow attachments");
+        int maximum = store.limits().maxAttachmentBytes();
+        assumeTrue(
+                maximum <= MAX_TEST_PAYLOAD_BYTES,
+                "Configure an attachment byte limit of at most 16 MiB for this test");
+        RawDocument document = documentOfSize(1);
+        assertLimitEnforced(
+                limitRecord(document, attachmentsWithTotalBytes(document, maximum), "original"),
+                limitRecord(document, attachmentsWithTotalBytes(document, maximum + 1), "rejected"));
+    }
+
+    private void assertLimitEnforced(RecordEnvelope accepted, RecordEnvelope rejected) {
+        assertThrows(IllegalArgumentException.class, () -> write(rejected, WriteCondition.absent()));
+        assertTrue(store.get(rejected.id()).isEmpty(), "A rejected create must not leave a record");
+
+        StoredRecord original = write(accepted, WriteCondition.absent()).stored();
+        assertEquals(accepted, original.record(), "The declared limit is inclusive");
+        assertEquals(original, store.get(accepted.id()).orElseThrow());
+        assertThrows(
+                IllegalArgumentException.class, () -> write(rejected, WriteCondition.atRevision(original.revision())));
+        assertEquals(
+                original, store.get(accepted.id()).orElseThrow(), "A rejected correction must preserve the snapshot");
+    }
+
+    private static RawDocument documentOfSize(int size) {
+        if (size < 5) {
+            return RawDocument.builder()
+                    .bytes(("0" + " ".repeat(size - 1)).getBytes(StandardCharsets.UTF_8))
+                    .build();
+        }
+        return RawDocument.builder()
+                .bytes(("\"雪\"" + " ".repeat(size - 5)).getBytes(StandardCharsets.UTF_8))
+                .build();
+    }
+
+    private List<RecordAttachment> smallAttachment(RawDocument document) {
+        if (store.limits().maxAttachments() == 0) return List.of();
+        return List.of(
+                attachment(document, "signature", Math.min(3, store.limits().maxAttachmentBytes())));
+    }
+
+    private List<RecordAttachment> attachmentsWithTotalBytes(RawDocument document, int size) {
+        if (store.limits().maxAttachments() == 1) return List.of(attachment(document, "signature", size));
+        // With a positive limit, each part fits on its own; their combined size exercises the bound.
+        return List.of(attachment(document, "part-0", size / 2), attachment(document, "part-1", size - size / 2));
+    }
+
+    private static RecordAttachment attachment(RawDocument document, String name, int size) {
+        return RecordAttachment.builder()
+                .name(name)
+                .mediaType("application/octet-stream")
+                .documentSha256(document.sha256())
+                .bytes(new byte[size])
+                .build();
+    }
+
+    private static RecordEnvelope limitRecord(RawDocument document, List<RecordAttachment> attachments, String marker) {
+        return RecordEnvelope.builder()
+                .id("urn:limits")
+                .type("ProvenanceRecord")
+                .document(document)
+                .validation(ValidationMetadata.builder()
+                        .status(RecordStatus.INCOMPLETE)
+                        .issues(List.of(ValidationIssue.violation("schema", "/name", marker)))
+                        .build())
+                .attributes(RecordAttributes.builder().name(marker).build())
+                .facets(RecordFacets.builder()
+                        .add(RecordFacet.CREATOR_NAME, marker)
+                        .build())
+                .attachments(attachments)
+                .build();
+    }
+
+    @Test
+    void repeatedInitializationPreservesRecordsAndRevisions() throws Exception {
+        RawDocument document = documentOfSize(1);
+        RecordEnvelope input = limitRecord(document, smallAttachment(document), "original");
+        StoredRecord original = write(input, WriteCondition.absent()).stored();
+        plugin.initialize();
+        plugin.initialize();
+        assertTrue(plugin.isReady());
+        assertEquals(original, store.get(input.id()).orElseThrow());
+        assertEquals(original, plugin.recordStore().get(input.id()).orElseThrow());
+        awaitSearch(
+                SearchQuery.builder()
+                        .type(input.type())
+                        .status(RecordStatus.INCOMPLETE)
+                        .facets(input.facets())
+                        .build(),
+                found -> assertEquals(List.of(original), found));
+    }
+
+    @Test
     void closeIsIdempotentAndStopsAccess() {
+        RecordSearch search = plugin.recordSearch();
+        RecordEnvelope input = record("urn:one", "ProvenanceRecord", "{}", RecordStatus.INCOMPLETE);
+        StoredRecord original = write(input, WriteCondition.absent()).stored();
         plugin.close();
         plugin.close();
+        assertFalse(plugin.isReady());
         assertThrows(StorageException.class, () -> store.get("urn:one"));
         assertThrows(StorageException.class, () -> store.getAll(List.of("urn:one")));
+        assertThrows(StorageException.class, () -> write(input, WriteCondition.atRevision(original.revision())));
+        assertThrows(
+                StorageException.class,
+                () -> write(
+                        record("urn:after-close", input.type(), "{}", RecordStatus.INCOMPLETE),
+                        WriteCondition.absent()));
+        assertThrows(
+                StorageException.class,
+                () -> search.search(SearchQuery.builder()
+                        .type(input.type())
+                        .status(RecordStatus.INCOMPLETE)
+                        .build()));
+    }
+
+    @Test
+    void searchFiltersTypeAndStatus() throws Exception {
+        var records = new ArrayList<StoredRecord>();
+        for (String type : List.of("ProvenanceRecord", "TrainingProvenanceRecord")) {
+            for (RecordStatus status : RecordStatus.values()) {
+                records.add(write(record("urn:" + type + ":" + status, type, "{}", status), WriteCondition.absent())
+                        .stored());
+            }
+        }
+        for (StoredRecord expected : records) {
+            for (int limit : List.of(100, 1)) {
+                awaitSearch(
+                        SearchQuery.builder()
+                                .type(expected.record().type())
+                                .status(expected.record().validation().status())
+                                .limit(limit)
+                                .build(),
+                        found -> assertEquals(List.of(expected), found));
+            }
+        }
+    }
+
+    @Test
+    void searchAppliesLimitAfterFacetFiltering() throws Exception {
+        Map<RecordFacets, List<StoredRecord>> groups = new LinkedHashMap<>();
+        for (String creator : List.of("Team A", "Team B")) {
+            RecordFacets facets = RecordFacets.builder()
+                    .add(RecordFacet.CREATOR_NAME, creator)
+                    .build();
+            var records = new ArrayList<StoredRecord>();
+            for (int i = 0; i < 3; i++) {
+                var input = record(
+                        "urn:" + creator.replace(' ', '-') + ":" + i,
+                        "ProvenanceRecord",
+                        "{}",
+                        RecordStatus.INCOMPLETE);
+                records.add(write(
+                                RecordEnvelope.builder()
+                                        .id(input.id())
+                                        .type(input.type())
+                                        .document(input.document())
+                                        .validation(input.validation())
+                                        .facets(facets)
+                                        .build(),
+                                WriteCondition.absent())
+                        .stored());
+            }
+            groups.put(facets, records);
+        }
+        for (var group : groups.entrySet()) {
+            List<StoredRecord> expected = group.getValue();
+            awaitSearch(
+                    SearchQuery.builder()
+                            .type("ProvenanceRecord")
+                            .status(RecordStatus.INCOMPLETE)
+                            .facets(group.getKey())
+                            .build(),
+                    found -> assertEquals(Set.copyOf(expected), Set.copyOf(found)));
+            for (int limit : List.of(1, 2)) {
+                awaitSearch(
+                        SearchQuery.builder()
+                                .type("ProvenanceRecord")
+                                .status(RecordStatus.INCOMPLETE)
+                                .facets(group.getKey())
+                                .limit(limit)
+                                .build(),
+                        found -> {
+                            assertFalse(found.isEmpty(), "Indexed matches must remain searchable with a smaller limit");
+                            assertTrue(expected.containsAll(found));
+                        });
+            }
+        }
     }
 
     @Test
@@ -310,15 +526,31 @@ public abstract class RecordStoreContract {
     }
 
     private void awaitMatches(SearchQuery query, java.util.Set<String> expected) throws Exception {
+        awaitSearch(
+                query,
+                found -> assertEquals(
+                        expected,
+                        found.stream().map(v -> v.record().id()).collect(java.util.stream.Collectors.toSet())));
+    }
+
+    private void awaitSearch(SearchQuery query, Consumer<List<StoredRecord>> assertions) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        java.util.Set<String> found;
+        AssertionError lastFailure;
         do {
-            found = plugin.recordSearch().search(query).stream()
-                    .map(v -> v.record().id())
-                    .collect(java.util.stream.Collectors.toSet());
-            if (expected.equals(found)) return;
+            List<StoredRecord> found = plugin.recordSearch().search(query);
+            assertTrue(found.size() <= query.limit(), "Search must honor the requested limit");
+            assertEquals(
+                    found.size(),
+                    found.stream().map(v -> v.record().id()).distinct().count(),
+                    "Search must not return duplicate records");
+            try {
+                assertions.accept(found);
+                return;
+            } catch (AssertionError failure) {
+                lastFailure = failure;
+            }
             Thread.sleep(50);
         } while (System.nanoTime() < deadline);
-        assertEquals(expected, found);
+        throw lastFailure;
     }
 }

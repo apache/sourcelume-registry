@@ -229,9 +229,18 @@ class ExamplePluginContractTest extends RecordStoreContract {
 The base test closes the plugin after each test. For a persistent backend, create a
 fresh test namespace or reset a dedicated test database; never use a live registry.
 The TCK covers byte preservation, complete replacement, revisions, conflicts,
-concurrent writes, batch reads, facets and close behavior. Backend-specific tests
-must also cover failures and guarantees that a shared contract test cannot induce,
-such as a lost commit acknowledgement or a partial schema migration.
+concurrent writes, batch reads, payload limits, search filters and limits, repeated
+initialization, and access after close. Limit tests accept the declared boundary
+and reject oversized creates and corrections without changing the stored snapshot.
+Search assertions allow index lag and do not require a particular result order.
+
+Use modest limits in the test instance: to bound test allocations, the TCK skips
+a payload boundary test above 16 MiB or an attachment count test above 1024.
+The combined attachment byte test also skips stores that allow no attachments.
+Check the test reports for skips; a skipped dimension has not been verified.
+Backend-specific tests must also cover failures and guarantees that a shared
+contract test cannot induce, such as a lost commit acknowledgement or a partial
+schema migration.
 
 The application module depends on the runtime JAR and your plugin JAR, imports the
 Quarkus BOM, and binds `quarkus-maven-plugin:build`. It needs no HTTP resource

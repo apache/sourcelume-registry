@@ -21,6 +21,8 @@ import org.apache.sourcelume.registry.spi.RegistryPlugin;
 class MemoryPluginContractTest extends RecordStoreContract {
     @Override
     protected RegistryPlugin createPlugin() {
-        return new MemoryPlugin();
+        RegistryPlugin plugin = new MemoryPlugin();
+        plugin.initialize();
+        return plugin;
     }
 }
