@@ -432,3 +432,10 @@ Atlas development defaults. The suite registers/updates Sourcelume type
 definitions and writes uniquely named test records; use a disposable instance.
 The ordinary HTTP tests explicitly select their mock profile, so the Atlas
 integration profile always uses the real storage provider.
+
+### Performance benchmarking
+
+`perf/` seeds the issue-#24 workload (datasets plus model records sized
+0/12/40/161 `trainingData` references) and times `GET /records/{id}`
+reference resolution through the public API, so the same run works
+against either distribution. See [perf/README.md](perf/README.md).
