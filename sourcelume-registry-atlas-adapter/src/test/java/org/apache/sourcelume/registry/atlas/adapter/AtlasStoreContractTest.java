@@ -31,7 +31,9 @@ import org.junit.jupiter.api.Test;
 class AtlasStoreContractTest extends RecordStoreContract {
     @Override
     protected RegistryPlugin createPlugin() {
-        return new AtlasRegistryPlugin(new Entities(), new ObjectMapper(), "unused");
+        RegistryPlugin plugin = new AtlasRegistryPlugin(new Entities(), new ObjectMapper(), "unused");
+        plugin.initialize();
+        return plugin;
     }
 
     @Test

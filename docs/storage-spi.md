@@ -515,10 +515,17 @@ volume; `docker-compose.atlas.yml` retains the Atlas registry setup. See the
 
 `RecordStoreContract` checks exact-byte round trips, absent attributes, complete
 replacement, attachment clearing, immutable types and validated records, stale
-revisions, concurrent creation/correction and close behavior. It runs against the
-independent memory store, PostgreSQL, and the Atlas mapping with an isolated transport fixture.
-Facet contracts cover exact matching, AND/OR filters and clearing on replacement;
+revisions, concurrent creation/correction, batch reads, payload boundaries and
+preservation of existing records when writes are rejected. Lifecycle checks cover
+repeated initialization without data loss and rejected reads, writes and searches
+after close, with readiness down.
+It runs against the independent memory store, PostgreSQL, the Atlas mapping with an
+isolated transport fixture, and the standalone plugin example.
+Search contracts cover type and status filtering, result limits, exact facet
+matching, AND/OR filters and clearing on replacement;
 Core tests cover extraction from incomplete and malformed field shapes.
+The [plugin development guide](plugin-development.md#run-the-contract-tests-and-package-the-application)
+describes fixture setup and allocation bounds for the payload tests.
 
 Additional Atlas tests exercise delayed writes, failed condition reads, legacy
 revisions, corrupt digests and verification of the complete snapshot. The Quarkus
