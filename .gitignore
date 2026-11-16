@@ -9,3 +9,6 @@ target/
 
 # Vendored Atlas docker tooling (created by dev-support/setup.sh)
 dev-support/vendor/
+
+# Perf harness manifests (created by dev-support/perf/seed.sh)
+dev-support/perf/out/
