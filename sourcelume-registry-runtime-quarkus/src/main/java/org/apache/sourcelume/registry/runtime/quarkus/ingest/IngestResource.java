@@ -26,6 +26,7 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
@@ -89,14 +90,160 @@ public class IngestResource {
     private static final Logger log = LoggerFactory.getLogger(IngestResource.class);
 
     private final RecordStore store;
+    private final RecordSearch search;
     private final IngestService ingestService;
     private final ObjectMapper objectMapper;
 
     @Inject
-    IngestResource(RecordStore store, IngestService ingestService, ObjectMapper objectMapper) {
+    IngestResource(RecordStore store, RecordSearch search, IngestService ingestService, ObjectMapper objectMapper) {
         this.store = store;
+        this.search = search;
         this.ingestService = ingestService;
         this.objectMapper = objectMapper;
+    }
+
+    /**
+     * Lists stored records of one logical type and validation status, with
+     * optional exact facet filters. Runs entirely on the storage plugin's
+     * {@code RecordSearch}, so every backend answers it the same way.
+     *
+     * <p>Deliberately does not resolve {@code trainingData} or
+     * {@code custodyChain} references: that would cost one backend lookup per
+     * reference per hit. Use {@code GET /records/{id}} for a resolved view.
+     */
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    @Operation(
+            summary = "Search stored records by type, status and facets",
+            description = "Returns the records of one logical type in one validation status. Facet values of"
+                    + " the same facet match any of them (OR), different facets must all match (AND)."
+                    + " Filtering happens before the limit is applied. References are not resolved here;"
+                    + " use GET /records/{id} for a record with its trainingData or custodyChain state.")
+    @APIResponse(
+            responseCode = "200",
+            description = "The matching records, up to the requested limit",
+            content = @Content(schema = @Schema(implementation = SearchResponse.class)))
+    @APIResponse(
+            responseCode = "400",
+            description = "Missing or invalid type, status, limit or facet value",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @APIResponse(
+            responseCode = "502",
+            description = "The backend answered with an error or with data the registry could not read",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @APIResponse(
+            responseCode = "503",
+            description = "The backend is unavailable; retry later",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public Response searchRecords(
+            @Parameter(description = "The record's logical type", required = true) @QueryParam("type") String type,
+            @Parameter(description = "The record's validation status", required = true) @QueryParam("status")
+                    String status,
+            @Parameter(description = "Maximum number of records to return (1-1000, default 100)") @QueryParam("limit")
+                    String limit,
+            @Parameter(description = "Exact license id; repeat to match any of several") @QueryParam("license")
+                    List<String> licenses,
+            @Parameter(description = "Exact trainingData IRI; repeat to match any of several")
+                    @QueryParam("trainingDataset")
+                    List<String> trainingDatasets,
+            @Parameter(description = "Exact creator name; repeat to match any of several") @QueryParam("creatorName")
+                    List<String> creatorNames,
+            @Parameter(description = "Exact custodyChain agent IRI; repeat to match any of several")
+                    @QueryParam("custodyAgent")
+                    List<String> custodyAgents) {
+        RecordFacets.Builder facets = RecordFacets.builder();
+        try {
+            addFacetValues(facets, RecordFacet.LICENSE, licenses);
+            addFacetValues(facets, RecordFacet.TRAINING_DATASET, trainingDatasets);
+            addFacetValues(facets, RecordFacet.CREATOR_NAME, creatorNames);
+            addFacetValues(facets, RecordFacet.CUSTODY_AGENT, custodyAgents);
+        } catch (IllegalArgumentException e) {
+            return badRequest(e.getMessage());
+        }
+
+        SearchQuery query;
+        try {
+            query = SearchQuery.builder()
+                    .type(requireType(type))
+                    .status(requireStatus(status))
+                    .limit(parseLimit(limit))
+                    .facets(facets.build())
+                    .build();
+        } catch (IllegalArgumentException e) {
+            return badRequest(e.getMessage());
+        }
+
+        List<RecordResponse> found = new ArrayList<>();
+        for (StoredRecord stored : search.search(query)) {
+            found.add(RecordResponse.of(stored.record(), null, null, objectMapper));
+        }
+        return Response.ok(new SearchResponse(found, query.limit())).build();
+    }
+
+    private static void addFacetValues(RecordFacets.Builder facets, RecordFacet facet, List<String> values) {
+        if (values == null) return;
+        for (String value : values) {
+            facets.add(facet, value);
+        }
+    }
+
+    /**
+     * The type is required and must be one the registry knows. It is not
+     * defaulted: a wrong default would silently hide records from callers
+     * that forgot the parameter.
+     */
+    private static String requireType(String type) {
+        if (type == null || type.isBlank()) {
+            throw new IllegalArgumentException("Query parameter 'type' is required; one of " + knownTypes());
+        }
+        for (RecordType known : RecordType.values()) {
+            if (known.typeName().equals(type)) return type;
+        }
+        throw new IllegalArgumentException("Unknown record type '" + type + "'; one of " + knownTypes());
+    }
+
+    /**
+     * The status is required for the same reason: defaulting to VALIDATED
+     * would hide INCOMPLETE records from curators, defaulting to INCOMPLETE
+     * would hide published records from consumers.
+     */
+    private static RecordStatus requireStatus(String status) {
+        if (status == null || status.isBlank()) {
+            throw new IllegalArgumentException("Query parameter 'status' is required; one of VALIDATED, INCOMPLETE");
+        }
+        try {
+            return RecordStatus.valueOf(status);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Unknown status '" + status + "'; one of VALIDATED, INCOMPLETE");
+        }
+    }
+
+    /**
+     * Parsed here rather than bound by JAX-RS: an unconvertible query parameter
+     * would answer {@code 404}, which is the wrong signal for a bad request.
+     */
+    private static int parseLimit(String limit) {
+        if (limit == null || limit.isBlank()) return 100;
+        try {
+            return Integer.parseInt(limit.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Query parameter 'limit' must be an integer between 1 and 1000");
+        }
+    }
+
+    private static String knownTypes() {
+        List<String> names = new ArrayList<>();
+        for (RecordType known : RecordType.values()) {
+            names.add(known.typeName());
+        }
+        return String.join(", ", names);
+    }
+
+    private static Response badRequest(String message) {
+        return Response.status(Response.Status.BAD_REQUEST)
+                .type(MediaType.APPLICATION_JSON)
+                .entity(new ErrorResponse(message))
+                .build();
     }
 
     @POST
@@ -581,6 +728,13 @@ public class IngestResource {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record CustodyEventResponse(
             String agent, String action, String startTime, RecordStatus recordStatus, Boolean lookupFailed) {}
+
+    /**
+     * Wire DTO for a search answer: the matching records and the limit that
+     * was applied, so a caller can tell a full page from a truncated one.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record SearchResponse(List<RecordResponse> records, int limit) {}
 
     /** Wire DTO for error responses. */
     public record ErrorResponse(String message) {}

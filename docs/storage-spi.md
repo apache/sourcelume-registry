@@ -108,7 +108,10 @@ and the existing Atlas catalog views, not an SPI for other metadata systems.
    The Atlas implementation registers its own typedefs. Initialization is idempotent;
    failed initialization leaves readiness down after the retry budget is exhausted.
 5. HTTP and Core receive `RecordStore` and `RecordSearch` from that plugin instance.
-   Readiness checks the selected plugin, including its initialization state.
+   `POST /records`, `GET /records`, `GET /records/{id}` and
+   `GET /records/{id}/document` run on that pair, so they behave identically on
+   every backend. Readiness checks the selected plugin, including its
+   initialization state.
 6. The runtime disposes the plugin on shutdown. `close()` is idempotent and prevents
    new storage operations. The Atlas transport shuts down its HTTP client.
 
@@ -277,6 +280,23 @@ validation status and no failure flag.
 
 `POST /records/validate` retains its `422` negative verdict. Submission responses
 retain top-level `recordStatus`. Documents above the store limit return `413`.
+
+### Which routes every backend serves
+
+A route belongs to the SPI surface only if it runs on `RecordStore` or
+`RecordSearch`. Everything else is backend-specific and must be documented as
+such, because a client cannot tell from the URL alone.
+
+| Route | Runs on | Available on |
+|---|---|---|
+| `POST /records` | `RecordStore`, `IngestService` | every backend |
+| `GET /records` (search) | `RecordSearch` | every backend |
+| `GET /records/{id}` | `RecordStore.get`, `getAll` | every backend |
+| `GET /records/{id}/document` | `RecordStore.get` | every backend |
+| `POST /records/validate` | validation chain | every backend |
+| `GET /api/v1/datasets`, `/guid/{guid}` | `AtlasAdapter` | Atlas only |
+| `GET /api/v1/types`, `/typedefs`, `/dataset`, `/model` | `AtlasAdapter` | Atlas only |
+
 The Atlas distribution owns the GUID and typedef routes and retains their
 Atlas formats. Other distributions built from the generic runtime do not
 register these routes. Selecting another provider within the Atlas distribution
@@ -325,8 +345,15 @@ List<StoredRecord> matches = plugin.recordSearch().search(query);
 
 This finds model records naming either dataset and the specified creator. It
 does not infer the model's license from those datasets or verify the claim.
-Facet filters are available through the Java SPI; this phase adds no HTTP
-search endpoint.
+
+`GET /records` exposes the same query over HTTP, so every backend answers it the
+same way: `type` and `status` are required, `limit` defaults to 100, and the
+facet filters are the repeatable parameters `license`, `trainingDataset`,
+`creatorName` and `custodyAgent`. Values of one facet match any of them (OR),
+different facets must all match (AND). The endpoint answers with the stored
+records but does not resolve `trainingData` or `custodyChain` references — that
+would cost one backend lookup per reference per hit; `GET /records/{id}` returns
+the resolved view for a single record.
 
 Atlas stores the original values in `recordFacets`. Its Solr-indexed
 `recordFacetTokens` contains one fixed-width SHA-256 token per `(facet, value)`
@@ -563,8 +590,9 @@ test scope and extend `RecordStoreContract` against an isolated store.
 
 ## Subsequent API work
 
-A summary-only search response, byte-identical `UNCHANGED` submissions, attachment
-HTTP transport and withdrawal remain separate API decisions. Withdrawal must
+A summary-only search response (a lighter projection than the full stored record),
+byte-identical `UNCHANGED` submissions, attachment HTTP transport and withdrawal
+remain separate API decisions. Withdrawal must
 specify document/attachment retention, discoverability and projection removal
 before adding a delete operation. Incompatible HTTP changes require a versioned
 contract coordinated with the Maven, Python and CMake tooling. Production DataHub

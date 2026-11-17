@@ -122,6 +122,16 @@ components:
       enum:
       - INCOMPLETE
       - VALIDATED
+    SearchResponse:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordResponse"
+        limit:
+          type: integer
+          format: int32
     SourcelumeDatasetDto:
       type: object
       required:
@@ -842,6 +852,87 @@ paths:
               description: UNKNOWN_WRITE requires reconciliation before retrying
               schema:
                 type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      summary: "Search stored records by type, status and facets"
+      description: "Returns the records of one logical type in one validation status.\
+        \ Facet values of the same facet match any of them (OR), different facets\
+        \ must all match (AND). Filtering happens before the limit is applied. References\
+        \ are not resolved here; use GET /records/{id} for a record with its trainingData\
+        \ or custodyChain state."
+      tags:
+      - Records
+      parameters:
+      - description: Exact creator name; repeat to match any of several
+        name: creatorName
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+      - description: Exact custodyChain agent IRI; repeat to match any of several
+        name: custodyAgent
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+      - description: Exact license id; repeat to match any of several
+        name: license
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+      - description: "Maximum number of records to return (1-1000, default 100)"
+        name: limit
+        in: query
+        schema:
+          type: string
+      - description: The record's validation status
+        required: true
+        name: status
+        in: query
+        schema:
+          type: string
+      - description: Exact trainingData IRI; repeat to match any of several
+        name: trainingDataset
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+      - description: The record's logical type
+        required: true
+        name: type
+        in: query
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "The matching records, up to the requested limit"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "400":
+          description: "Missing or invalid type, status, limit or facet value"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: The backend answered with an error or with data the registry
+            could not read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The backend is unavailable; retry later
           content:
             application/json:
               schema:

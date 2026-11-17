@@ -201,6 +201,12 @@ persist and index them. An unsupported operation or failed query must not look
 like a successful empty result. Storage and facet search are required by the current
 SPI; graph support is a separate future contract.
 
+`GET /records` serves search over HTTP from `RecordSearch`, so a plugin that
+implements the contract gets the endpoint without writing any HTTP code. Do not
+add backend-specific routes to a plugin: clients cannot tell a portable route
+from a backend-specific one, so `docs/storage-spi.md` lists which routes every
+backend serves.
+
 Use `StorageException` for backend failures. `UNKNOWN_WRITE` means a mutation may
 have committed but its result cannot be established. Do not turn a timeout into a
 successful write or a definitive conflict without sufficient backend evidence.

@@ -101,6 +101,16 @@ class PostgresDistributionIT {
                 .body("paths", not(hasKey("/api/v1/datasets")));
         request().get("/api/v1/datasets").then().statusCode(404);
         request().get("/api/v1/types/typedefs").then().statusCode(404);
+        // Search is a storage-plugin capability, not an Atlas view: the
+        // PostgreSQL distribution answers it like any other backend.
+        request()
+                .queryParam("type", "ProvenanceRecord")
+                .queryParam("status", "VALIDATED")
+                .get("/records")
+                .then()
+                .statusCode(200)
+                .body("limit", equalTo(100))
+                .body("records", notNullValue());
     }
 
     @Test
