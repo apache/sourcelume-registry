@@ -18,6 +18,30 @@
 openapi: 3.1.0
 components:
   schemas:
+    AttachmentInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        mediaType:
+          type: string
+        size:
+          type: integer
+          format: int32
+    AttachmentsResponse:
+      type: object
+      properties:
+        qualifiedName:
+          type: string
+        sha256:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttachmentInfo"
+    BinaryPart:
+      type: string
+      format: binary
     ConflictResponse:
       type: object
       properties:
@@ -52,6 +76,68 @@ components:
       properties:
         message:
           type: string
+    FileItem:
+      type: object
+      properties:
+        inMemory:
+          type: boolean
+        file:
+          $ref: "#/components/schemas/Path"
+        fileSize:
+          type: integer
+          format: int64
+        inputStream:
+          type: string
+          format: binary
+    FileStore:
+      type: object
+      properties:
+        readOnly:
+          type: boolean
+        totalSpace:
+          type: integer
+          format: int64
+        usableSpace:
+          type: integer
+          format: int64
+        unallocatedSpace:
+          type: integer
+          format: int64
+        blockSize:
+          type: integer
+          format: int64
+    FileSystem:
+      type: object
+      properties:
+        open:
+          type: boolean
+        readOnly:
+          type: boolean
+        separator:
+          type: string
+        rootDirectories:
+          type: array
+          items:
+            $ref: "#/components/schemas/Path"
+        fileStores:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileStore"
+        userPrincipalLookupService:
+          $ref: "#/components/schemas/UserPrincipalLookupService"
+    FormValue:
+      type: object
+      properties:
+        value:
+          type: string
+        charset:
+          type: string
+        fileItem:
+          $ref: "#/components/schemas/FileItem"
+        fileName:
+          type: string
+        headers:
+          $ref: "#/components/schemas/MultivaluedMapStringString"
     IngestResponse:
       type: object
       properties:
@@ -80,6 +166,37 @@ components:
           type: string
         message:
           type: string
+    MultipartFormDataInput:
+      type: object
+      properties:
+        values:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/FormValue"
+    MultivaluedMapStringString:
+      type: object
+      additionalProperties:
+        type: array
+        items:
+          type: string
+    Path:
+      type: object
+      properties:
+        fileSystem:
+          $ref: "#/components/schemas/FileSystem"
+        absolute:
+          type: boolean
+        root:
+          $ref: "#/components/schemas/Path"
+        fileName:
+          $ref: "#/components/schemas/Path"
+        parent:
+          $ref: "#/components/schemas/Path"
+        nameCount:
+          type: integer
+          format: int32
     RecordResponse:
       type: object
       properties:
@@ -122,6 +239,22 @@ components:
       enum:
       - INCOMPLETE
       - VALIDATED
+    RecordWithAttachments:
+      type: object
+      required:
+      - record
+      properties:
+        record:
+          type: string
+          format: binary
+          description: "The record as a file part, Content-Type application/ld+json\
+            \ or application/json"
+        attachment:
+          type: array
+          items:
+            $ref: "#/components/schemas/BinaryPart"
+          description: "Zero or more file parts. The filename becomes the attachment's\
+            \ name, the part's Content-Type its media type."
     SearchResponse:
       type: object
       properties:
@@ -181,6 +314,8 @@ components:
           $ref: "#/components/schemas/RecordStatus"
         lookupFailed:
           type: boolean
+    UserPrincipalLookupService:
+      type: object
     ValidationResponse:
       type: object
       properties:
@@ -765,14 +900,19 @@ paths:
       summary: Submit a provenance record
       description: "Validates the record synchronously and stores it byte-identical\
         \ with its verdict: VALIDATED (published, no longer changeable) or INCOMPLETE\
-        \ (carries its issues, corrected by resubmitting)."
+        \ (carries its issues, corrected by resubmitting). As multipart/form-data,\
+        \ the record comes with attached files, such as a detached signature, stored\
+        \ next to it and bound to its exact bytes: a resubmission of an INCOMPLETE\
+        \ record replaces the record and its attachments together, and a VALIDATED\
+        \ record never changes, attachments included. The registry stores attachments\
+        \ as opaque bytes and does not verify them."
       tags:
       - Records
       requestBody:
-        description: A dataset or model provenance record as JSON-LD. Records with
-          a nonblank id that fail spec validation are also accepted and stored as
-          INCOMPLETE with their validation issues.
         content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/RecordWithAttachments"
           application/ld+json:
             examples:
               dataset:
@@ -793,8 +933,22 @@ paths:
                 $ref: "#/components/examples/IncompleteRecord"
             schema:
               $ref: "#/components/schemas/RecordSubmission"
+        description: A dataset or model provenance record as JSON-LD. Records with
+          a nonblank id that fail spec validation are also accepted and stored as
+          INCOMPLETE with their validation issues.
         required: true
       responses:
+        "200":
+          description: Existing record resubmitted and stored with its new verdict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestResponse"
+          headers:
+            Location:
+              description: The record's status view
+              schema:
+                type: string
         "201":
           description: New record stored with its verdict
           headers:
@@ -806,19 +960,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IngestResponse"
-        "200":
-          description: Existing record resubmitted and stored with its new verdict
-          headers:
-            Location:
-              description: The record's status view
-              schema:
-                type: string
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IngestResponse"
         "400":
-          description: "Not valid UTF-8, an unparseable document, or no usable id"
+          description: "Not valid UTF-8, an unparseable document, or no usable id;\
+            \ for multipart, also a missing or repeated record part, an unknown part,\
+            \ an attachment without a filename or Content-Type, or a duplicate attachment\
+            \ name"
           content:
             application/json:
               schema:
@@ -831,13 +977,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ConflictResponse"
         "413":
-          description: The document exceeds the storage size limit
+          description: The document or the attachments exceed the storage limits
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "415":
-          description: Unsupported content type
+          description: "Unsupported content type, or a multipart record part that\
+            \ is not application/ld+json or application/json"
         "502":
           description: The backend answered with an error or with data the registry
             could not read
@@ -1023,6 +1170,84 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /records/{id}/attachments:
+    get:
+      summary: List the files attached to a record
+      description: "Names, media types and sizes of the files stored with the record,\
+        \ such as a detached signature. Every attachment is bound to the document\
+        \ digest reported here."
+      tags:
+      - Records
+      parameters:
+      - description: The record's id (IRI); encode it when calling the API directly
+        name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The record's attachments; an empty list when it has none
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttachmentsResponse"
+        "404":
+          description: No record for this id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: The backend answered with an error or with data the registry
+            could not read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The backend is unavailable; retry later
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /records/{id}/attachments/{name}:
+    get:
+      summary: Get one file attached to a record
+      description: "Returns the attachment byte-identical to the uploaded part, with\
+        \ the media type it was uploaded with. Verify it against GET /records/{id}/document,\
+        \ whose bytes it is bound to."
+      tags:
+      - Records
+      parameters:
+      - description: The record's id (IRI); encode it when calling the API directly
+        name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - description: The attachment's name
+        name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "The attachment, as uploaded"
+          content:
+            application/json:
+              schema: {}
+        "404":
+          description: "No record for this id, or no attachment of this name"
+          content: {}
+        "502":
+          description: The backend answered with an error or with data the registry
+            could not read
+          content: {}
+        "503":
+          description: The backend is unavailable; retry later
+          content: {}
   /records/{id}/document:
     get:
       summary: Get the record's stored document

@@ -93,7 +93,16 @@ class OpenApiDocumentTest {
                     .path("post")
                     .path("requestBody")
                     .path("content");
+            if (submission) {
+                assertEquals(
+                        "#/components/schemas/RecordWithAttachments",
+                        content.path("multipart/form-data")
+                                .path("schema")
+                                .path("$ref")
+                                .asText());
+            }
             for (JsonNode media : content) {
+                if (media == content.get("multipart/form-data")) continue;
                 assertEquals(
                         "#/components/schemas/" + (submission ? "RecordSubmission" : "RecordValidationRequest"),
                         media.path("schema").path("$ref").asText());
