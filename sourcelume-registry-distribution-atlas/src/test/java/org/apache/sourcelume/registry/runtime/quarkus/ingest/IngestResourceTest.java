@@ -92,6 +92,7 @@ class IngestResourceTest {
     private final AtlasRegistryPlugin plugin = new AtlasRegistryPlugin(fake, new ObjectMapper(), "unused");
     private final IngestResource resource = new IngestResource(
             plugin.recordStore(),
+            plugin.recordSearch(),
             new DefaultIngestService(ValidatorChain.discover(), plugin.recordStore()),
             new ObjectMapper());
 

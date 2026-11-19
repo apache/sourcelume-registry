@@ -16,13 +16,13 @@
  */
 package org.apache.sourcelume.registry.postgres;
 
-import java.sql.Array;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,41 +51,31 @@ final class RecordMapper {
 
     /** Loads a single record and locks its row until the current transaction ends. */
     static StoredRecord lockRecord(Connection connection, String id) throws SQLException {
-        try (PreparedStatement statement =
-                connection.prepareStatement("SELECT " + RECORD_COLUMNS + " FROM records WHERE id = ? FOR UPDATE")) {
-            statement.setString(1, id);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next() ? mapRow(connection, resultSet) : null;
-            }
-        }
+        return loadSingle(connection, "SELECT " + RECORD_COLUMNS + " FROM records WHERE id = ? FOR UPDATE", id);
     }
 
     static StoredRecord loadOne(Connection connection, String id) throws SQLException {
-        try (PreparedStatement statement =
-                connection.prepareStatement("SELECT " + RECORD_COLUMNS + " FROM records WHERE id = ?")) {
-            statement.setString(1, id);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next() ? mapRow(connection, resultSet) : null;
-            }
-        }
+        return loadSingle(connection, "SELECT " + RECORD_COLUMNS + " FROM records WHERE id = ?", id);
     }
 
     static Map<String, StoredRecord> loadAll(Connection connection, Collection<String> ids) throws SQLException {
-        Map<String, StoredRecord> found = new LinkedHashMap<>();
-        Array idArray = connection.createArrayOf("text", ids.toArray(new String[0]));
+        List<Row> rows;
         try (PreparedStatement statement = connection.prepareStatement(
                 "SELECT " + RECORD_COLUMNS + " FROM records WHERE id = ANY(?) ORDER BY id")) {
-            statement.setArray(1, idArray);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                while (resultSet.next()) {
-                    StoredRecord record = mapRow(connection, resultSet);
-                    found.put(record.record().id(), record);
-                }
-            }
+            statement.setArray(1, connection.createArrayOf("text", ids.toArray(new String[0])));
+            rows = readRows(statement);
+        }
+        Map<String, StoredRecord> found = new LinkedHashMap<>();
+        for (StoredRecord record : hydrate(connection, rows)) {
+            found.put(record.record().id(), record);
         }
         return Map.copyOf(found);
     }
 
+    /**
+     * Searches the records table, then hydrates every hit in one batch. The number of statements does
+     * not grow with the number of hits.
+     */
     static List<StoredRecord> search(Connection connection, SearchQuery query) throws SQLException {
         List<RecordFacet> facetKeys = new ArrayList<>();
         List<List<String>> facetValues = new ArrayList<>();
@@ -104,7 +94,6 @@ final class RecordMapper {
             sql.append("))");
         }
         sql.append(" ORDER BY id LIMIT ?");
-        List<StoredRecord> results = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement(sql.toString())) {
             int index = 1;
             statement.setString(index++, query.type());
@@ -116,13 +105,8 @@ final class RecordMapper {
                 }
             }
             statement.setInt(index, query.limit());
-            try (ResultSet resultSet = statement.executeQuery()) {
-                while (resultSet.next()) {
-                    results.add(mapRow(connection, resultSet));
-                }
-            }
+            return hydrate(connection, readRows(statement));
         }
-        return results;
     }
 
     /** Inserts the record row; returns 0 when a record with the same id already exists. */
@@ -238,88 +222,156 @@ final class RecordMapper {
         return index - 1;
     }
 
-    private static StoredRecord mapRow(Connection connection, ResultSet resultSet) throws SQLException {
-        String id = resultSet.getString("id");
-        RecordEnvelope envelope = RecordEnvelope.builder()
-                .id(id)
-                .type(resultSet.getString("type"))
-                .document(RawDocument.builder()
-                        .bytes(resultSet.getBytes("document_bytes"))
-                        .build())
-                .validation(ValidationMetadata.builder()
-                        .status(RecordStatus.valueOf(resultSet.getString("status")))
-                        .issues(loadIssues(connection, id))
-                        .validatedBy(resultSet.getString("validated_by"))
-                        .validatedAt(resultSet.getString("validated_at"))
-                        .build())
-                .attributes(RecordAttributes.builder()
-                        .name(resultSet.getString("attr_name"))
-                        .description(resultSet.getString("attr_description"))
-                        .licenseId(resultSet.getString("attr_license_id"))
-                        .sourceUri(resultSet.getString("attr_source_uri"))
-                        .modelUri(resultSet.getString("attr_model_uri"))
-                        .modelVersion(resultSet.getString("attr_model_version"))
-                        .disclosure(resultSet.getString("attr_disclosure"))
-                        .build())
-                .facets(loadFacets(connection, id))
-                .attachments(loadAttachments(connection, id))
-                .build();
-        return StoredRecord.builder()
-                .record(envelope)
-                .revision(resultSet.getString("revision"))
-                .build();
-    }
+    /** One records-table row. Side tables are attached in a batch by {@link #hydrate}. */
+    private record Row(
+            String id,
+            String type,
+            String status,
+            String revision,
+            byte[] documentBytes,
+            String validatedBy,
+            String validatedAt,
+            String name,
+            String description,
+            String licenseId,
+            String sourceUri,
+            String modelUri,
+            String modelVersion,
+            String disclosure) {}
 
-    private static List<ValidationIssue> loadIssues(Connection connection, String id) throws SQLException {
-        try (PreparedStatement statement =
-                connection.prepareStatement("SELECT validator_id, severity, path, message FROM validation_issues"
-                        + " WHERE record_id = ? ORDER BY ordinal")) {
+    private static StoredRecord loadSingle(Connection connection, String sql, String id) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, id);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                List<ValidationIssue> issues = new ArrayList<>();
-                while (resultSet.next()) {
-                    issues.add(new ValidationIssue(
-                            resultSet.getString("validator_id"),
-                            ValidationIssue.Severity.valueOf(resultSet.getString("severity")),
-                            resultSet.getString("path"),
-                            resultSet.getString("message")));
-                }
-                return issues;
-            }
+            List<StoredRecord> found = hydrate(connection, readRows(statement));
+            return found.isEmpty() ? null : found.get(0);
         }
     }
 
-    private static RecordFacets loadFacets(Connection connection, String id) throws SQLException {
-        RecordFacets.Builder facets = RecordFacets.builder();
-        try (PreparedStatement statement =
-                connection.prepareStatement("SELECT facet, value FROM record_facets WHERE record_id = ?")) {
-            statement.setString(1, id);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                while (resultSet.next()) {
-                    facets.add(RecordFacet.valueOf(resultSet.getString("facet")), resultSet.getString("value"));
-                }
+    private static List<Row> readRows(PreparedStatement statement) throws SQLException {
+        List<Row> rows = new ArrayList<>();
+        try (ResultSet resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                rows.add(new Row(
+                        resultSet.getString("id"),
+                        resultSet.getString("type"),
+                        resultSet.getString("status"),
+                        resultSet.getString("revision"),
+                        resultSet.getBytes("document_bytes"),
+                        resultSet.getString("validated_by"),
+                        resultSet.getString("validated_at"),
+                        resultSet.getString("attr_name"),
+                        resultSet.getString("attr_description"),
+                        resultSet.getString("attr_license_id"),
+                        resultSet.getString("attr_source_uri"),
+                        resultSet.getString("attr_model_uri"),
+                        resultSet.getString("attr_model_version"),
+                        resultSet.getString("attr_disclosure")));
             }
         }
-        return facets.build();
+        return rows;
     }
 
-    private static List<RecordAttachment> loadAttachments(Connection connection, String id) throws SQLException {
-        try (PreparedStatement statement =
-                connection.prepareStatement("SELECT name, media_type, document_sha256, bytes FROM record_attachments"
-                        + " WHERE record_id = ? ORDER BY ordinal")) {
-            statement.setString(1, id);
+    /**
+     * Turns rows into records. Validation issues, facets and attachments are each read with one query
+     * for the whole batch, so the statement count is constant in the number of rows.
+     */
+    private static List<StoredRecord> hydrate(Connection connection, List<Row> rows) throws SQLException {
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        String[] ids = rows.stream().map(Row::id).toArray(String[]::new);
+        Map<String, List<ValidationIssue>> issues = loadIssues(connection, ids);
+        Map<String, RecordFacets.Builder> facets = loadFacets(connection, ids);
+        Map<String, List<RecordAttachment>> attachments = loadAttachments(connection, ids);
+        List<StoredRecord> records = new ArrayList<>(rows.size());
+        for (Row row : rows) {
+            RecordFacets.Builder recordFacets = facets.get(row.id());
+            RecordEnvelope envelope = RecordEnvelope.builder()
+                    .id(row.id())
+                    .type(row.type())
+                    .document(RawDocument.builder().bytes(row.documentBytes()).build())
+                    .validation(ValidationMetadata.builder()
+                            .status(RecordStatus.valueOf(row.status()))
+                            .issues(issues.getOrDefault(row.id(), List.of()))
+                            .validatedBy(row.validatedBy())
+                            .validatedAt(row.validatedAt())
+                            .build())
+                    .attributes(RecordAttributes.builder()
+                            .name(row.name())
+                            .description(row.description())
+                            .licenseId(row.licenseId())
+                            .sourceUri(row.sourceUri())
+                            .modelUri(row.modelUri())
+                            .modelVersion(row.modelVersion())
+                            .disclosure(row.disclosure())
+                            .build())
+                    .facets(recordFacets == null ? RecordFacets.builder().build() : recordFacets.build())
+                    .attachments(attachments.getOrDefault(row.id(), List.of()))
+                    .build();
+            records.add(StoredRecord.builder()
+                    .record(envelope)
+                    .revision(row.revision())
+                    .build());
+        }
+        return records;
+    }
+
+    private static Map<String, List<ValidationIssue>> loadIssues(Connection connection, String[] ids)
+            throws SQLException {
+        Map<String, List<ValidationIssue>> byRecord = new HashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT record_id, validator_id, severity, path, message FROM validation_issues"
+                        + " WHERE record_id = ANY(?) ORDER BY record_id, ordinal")) {
+            statement.setArray(1, connection.createArrayOf("text", ids));
             try (ResultSet resultSet = statement.executeQuery()) {
-                List<RecordAttachment> attachments = new ArrayList<>();
                 while (resultSet.next()) {
-                    attachments.add(RecordAttachment.builder()
-                            .name(resultSet.getString("name"))
-                            .mediaType(resultSet.getString("media_type"))
-                            .documentSha256(resultSet.getString("document_sha256"))
-                            .bytes(resultSet.getBytes("bytes"))
-                            .build());
+                    byRecord.computeIfAbsent(resultSet.getString("record_id"), key -> new ArrayList<>())
+                            .add(new ValidationIssue(
+                                    resultSet.getString("validator_id"),
+                                    ValidationIssue.Severity.valueOf(resultSet.getString("severity")),
+                                    resultSet.getString("path"),
+                                    resultSet.getString("message")));
                 }
-                return attachments;
             }
         }
+        return byRecord;
+    }
+
+    private static Map<String, RecordFacets.Builder> loadFacets(Connection connection, String[] ids)
+            throws SQLException {
+        Map<String, RecordFacets.Builder> byRecord = new HashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT record_id, facet, value FROM record_facets WHERE record_id = ANY(?)")) {
+            statement.setArray(1, connection.createArrayOf("text", ids));
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    byRecord.computeIfAbsent(resultSet.getString("record_id"), key -> RecordFacets.builder())
+                            .add(RecordFacet.valueOf(resultSet.getString("facet")), resultSet.getString("value"));
+                }
+            }
+        }
+        return byRecord;
+    }
+
+    private static Map<String, List<RecordAttachment>> loadAttachments(Connection connection, String[] ids)
+            throws SQLException {
+        Map<String, List<RecordAttachment>> byRecord = new HashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT record_id, name, media_type, document_sha256, bytes FROM record_attachments"
+                        + " WHERE record_id = ANY(?) ORDER BY record_id, ordinal")) {
+            statement.setArray(1, connection.createArrayOf("text", ids));
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    byRecord.computeIfAbsent(resultSet.getString("record_id"), key -> new ArrayList<>())
+                            .add(RecordAttachment.builder()
+                                    .name(resultSet.getString("name"))
+                                    .mediaType(resultSet.getString("media_type"))
+                                    .documentSha256(resultSet.getString("document_sha256"))
+                                    .bytes(resultSet.getBytes("bytes"))
+                                    .build());
+                }
+            }
+        }
+        return byRecord;
     }
 }

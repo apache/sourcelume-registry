@@ -125,8 +125,16 @@ Both distributions expose the same record API on port `8082`:
 |---|---|
 | `POST /records/validate` | Validate a record without storing it |
 | `POST /records` | Submit a record or correct an incomplete record |
+| `GET /records` | Search stored records by type, status and exact facet filters |
 | `GET /records/{id}` | Read a record and its validation status |
 | `GET /records/{id}/document` | Retrieve the exact submitted bytes and SHA-256 ETag |
+
+Search requires `type` and `status` and accepts the repeatable facet filters
+`license`, `trainingDataset`, `creatorName` and `custodyAgent`:
+
+```bash
+curl -s "http://localhost:8082/records?type=TrainingProvenanceRecord&status=VALIDATED&trainingDataset=https://example.org/records/dataset-a" | jq .
+```
 
 For example, submit a record and use the returned `Location` header to read it:
 
