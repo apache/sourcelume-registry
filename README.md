@@ -124,10 +124,12 @@ Both distributions expose the same record API on port `8082`:
 | Endpoint | Purpose |
 |---|---|
 | `POST /records/validate` | Validate a record without storing it |
-| `POST /records` | Submit a record or correct an incomplete record |
+| `POST /records` | Submit a record or correct an incomplete record; as `multipart/form-data`, with attachments |
 | `GET /records` | Search stored records by type, status and exact facet filters |
 | `GET /records/{id}` | Read a record and its validation status |
 | `GET /records/{id}/document` | Retrieve the exact submitted bytes and SHA-256 ETag |
+| `GET /records/{id}/attachments` | List the files stored with a record, such as a detached signature |
+| `GET /records/{id}/attachments/{name}` | Retrieve one attachment exactly as uploaded |
 
 Search requires `type` and `status` and accepts the repeatable facet filters
 `license`, `trainingDataset`, `creatorName` and `custodyAgent`:

@@ -29,11 +29,15 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import org.apache.sourcelume.registry.common.dto.CustodyEventDto;
@@ -59,6 +63,8 @@ import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
 import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+import org.jboss.resteasy.reactive.server.multipart.FormValue;
+import org.jboss.resteasy.reactive.server.multipart.MultipartFormDataInput;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,7 +76,10 @@ import org.slf4j.LoggerFactory;
  * INCOMPLETE record) and the verdict in the body. {@code GET /records/{id}}
  * reports the stored state; {@code GET /records/{id}/document} returns the
  * stored bytes verbatim, for consumers that check a signature or the
- * record's digest over the document itself.
+ * record's digest over the document itself. A multipart {@code POST
+ * /records} stores files such as a detached signature next to the record;
+ * {@code GET /records/{id}/attachments} lists them and
+ * {@code GET /records/{id}/attachments/{name}} returns one verbatim.
  *
  * <p>Every stored record carries its validation verdict: VALIDATED is
  * published (consumers filter on it), INCOMPLETE carries its issues and
@@ -253,12 +262,19 @@ public class IngestResource {
             summary = "Submit a provenance record",
             description = "Validates the record synchronously and stores it byte-identical with its verdict:"
                     + " VALIDATED (published, no longer changeable) or INCOMPLETE (carries its issues,"
-                    + " corrected by resubmitting).")
+                    + " corrected by resubmitting). As multipart/form-data, the record comes with attached"
+                    + " files, such as a detached signature, stored next to it and bound to its exact bytes:"
+                    + " a resubmission of an INCOMPLETE record replaces the record and its attachments"
+                    + " together, and a VALIDATED record never changes, attachments included. The registry"
+                    + " stores attachments as opaque bytes and does not verify them.")
     @RequestBody(
             required = true,
             description = "A dataset or model provenance record as JSON-LD. Records with a nonblank id that fail"
                     + " spec validation are also accepted and stored as INCOMPLETE with their validation issues.",
             content = {
+                @Content(
+                        mediaType = MediaType.MULTIPART_FORM_DATA,
+                        schema = @Schema(implementation = RecordWithAttachments.class)),
                 @Content(
                         mediaType = "application/ld+json",
                         schema = @Schema(ref = "#/components/schemas/RecordSubmission"),
@@ -296,7 +312,9 @@ public class IngestResource {
             content = @Content(schema = @Schema(implementation = IngestResponse.class)))
     @APIResponse(
             responseCode = "400",
-            description = "Not valid UTF-8, an unparseable document, or no usable id",
+            description = "Not valid UTF-8, an unparseable document, or no usable id; for multipart, also a"
+                    + " missing or repeated record part, an unknown part, an attachment without a filename"
+                    + " or Content-Type, an empty attachment, or a duplicate attachment name",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @APIResponse(
             responseCode = "409",
@@ -304,9 +322,12 @@ public class IngestResource {
             content = @Content(schema = @Schema(implementation = ConflictResponse.class)))
     @APIResponse(
             responseCode = "413",
-            description = "The document exceeds the storage size limit",
+            description = "The document or the attachments exceed the storage limits",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    @APIResponse(responseCode = "415", description = "Unsupported content type")
+    @APIResponse(
+            responseCode = "415",
+            description = "Unsupported content type, or a multipart record part that is not"
+                    + " application/ld+json or application/json")
     @APIResponse(
             responseCode = "502",
             description = "The backend answered with an error or with data the registry could not read",
@@ -321,6 +342,58 @@ public class IngestResource {
                             schema = @Schema(type = SchemaType.STRING)),
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public Response submit(byte[] received) {
+        return accept(received, List.of());
+    }
+
+    /**
+     * The multipart form of {@code POST /records}. Hidden from OpenAPI: both methods
+     * share one operation, documented on {@link #submit}, and scanning this
+     * method's framework parameter type would add unused internal schemas.
+     */
+    @POST
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Operation(hidden = true)
+    public Response submitWithAttachments(MultipartFormDataInput input) {
+        FormValue record = null;
+        List<AttachmentPart> parts = new ArrayList<>();
+        try {
+            for (Map.Entry<String, java.util.Collection<FormValue>> entry :
+                    input.getValues().entrySet()) {
+                switch (entry.getKey()) {
+                    case "record" -> {
+                        if (entry.getValue().size() != 1) return badRequest("Send exactly one 'record' part");
+                        record = entry.getValue().iterator().next();
+                    }
+                    case "attachment" -> {
+                        for (FormValue value : entry.getValue()) parts.add(AttachmentPart.of(value));
+                    }
+                    // An unknown part is rejected rather than dropped, so a
+                    // misspelled 'attachment' cannot lose a signature silently.
+                    default -> {
+                        return badRequest(
+                                "Unknown form part '" + entry.getKey() + "'; expected 'record' and 'attachment'");
+                    }
+                }
+            }
+        } catch (IllegalArgumentException e) {
+            return badRequest(e.getMessage());
+        }
+        if (record == null) return badRequest("Missing 'record' part");
+        // A plain form field is decoded to text by the framework; only a
+        // file part keeps the exact bytes the record's digest must cover.
+        if (!record.isFileItem()) return badRequest("Send the 'record' part as a file");
+        String recordType = baseType(record.getHeaders().getFirst("Content-Type"));
+        if (!"application/ld+json".equals(recordType) && !MediaType.APPLICATION_JSON.equals(recordType)) {
+            return Response.status(415)
+                    .type(MediaType.APPLICATION_JSON)
+                    .entity(new ErrorResponse("The 'record' part must be application/ld+json or application/json"))
+                    .build();
+        }
+        return accept(read(record), parts);
+    }
+
+    private Response accept(byte[] received, List<AttachmentPart> parts) {
         if (received != null && received.length > store.limits().maxDocumentBytes()) {
             return Response.status(413)
                     .entity(new ErrorResponse("Document exceeds the storage size limit"))
@@ -344,9 +417,38 @@ public class IngestResource {
                     .build();
         }
 
+        StoreLimits limits = store.limits();
+        long attachmentBytes =
+                parts.stream().mapToLong(part -> part.bytes().length).sum();
+        if (parts.size() > limits.maxAttachments() || attachmentBytes > limits.maxAttachmentBytes()) {
+            return Response.status(413)
+                    .entity(new ErrorResponse("Attachments exceed the storage limits: at most "
+                            + limits.maxAttachments() + " files, " + limits.maxAttachmentBytes()
+                            + " bytes in total"))
+                    .build();
+        }
+        RawDocument document = RawDocument.builder().bytes(received).build();
+        List<RecordAttachment> attachments = new ArrayList<>();
+        var names = new HashSet<String>();
+        try {
+            for (AttachmentPart part : parts) {
+                if (!names.add(part.name()))
+                    throw new IllegalArgumentException("Duplicate attachment name: " + part.name());
+                attachments.add(RecordAttachment.builder()
+                        .name(part.name())
+                        .mediaType(part.mediaType())
+                        .documentSha256(document.sha256())
+                        .bytes(part.bytes())
+                        .build());
+            }
+        } catch (IllegalArgumentException e) {
+            return badRequest(e.getMessage());
+        }
+
         try {
             IngestResult result = ingestService.process(RecordSubmission.builder()
-                    .document(RawDocument.builder().bytes(received).build())
+                    .document(document)
+                    .attachments(attachments)
                     .build());
             return Response.status(result.disposition() == WriteResult.Disposition.CREATED ? 201 : 200)
                     .location(locationOf(recordId))
@@ -473,6 +575,85 @@ public class IngestResource {
             ok.tag(stored.document().sha256());
         }
         return ok.build();
+    }
+
+    @GET
+    @Path("/{id}/attachments")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Operation(
+            summary = "List the files attached to a record",
+            description = "Names, media types and sizes of the files stored with the record, such as a"
+                    + " detached signature. Every attachment is bound to the document digest reported here.")
+    @APIResponse(
+            responseCode = "200",
+            description = "The record's attachments; an empty list when it has none",
+            content = @Content(schema = @Schema(implementation = AttachmentsResponse.class)))
+    @APIResponse(
+            responseCode = "404",
+            description = "No record for this id",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @APIResponse(
+            responseCode = "502",
+            description = "The backend answered with an error or with data the registry could not read",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @APIResponse(
+            responseCode = "503",
+            description = "The backend is unavailable; retry later",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public Response attachments(
+            @Parameter(description = "The record's id (IRI); encode it when calling the API directly") @PathParam("id")
+                    String id) {
+        RecordEnvelope stored = store.get(id).map(StoredRecord::record).orElse(null);
+        if (stored == null) return notFound("No record for id: " + id);
+        List<AttachmentInfo> files = new ArrayList<>();
+        for (RecordAttachment attachment : stored.attachments()) {
+            files.add(new AttachmentInfo(attachment.name(), attachment.mediaType(), attachment.size()));
+        }
+        String sha256 = stored.document() == null ? null : stored.document().sha256();
+        return Response.ok(new AttachmentsResponse(stored.id(), sha256, files)).build();
+    }
+
+    @GET
+    @Path("/{id}/attachments/{name}")
+    @Operation(
+            summary = "Get one file attached to a record",
+            description = "Returns the attachment byte-identical to the uploaded part, with the media type it"
+                    + " was uploaded with, as a download (Content-Disposition: attachment, nosniff,"
+                    + " Content-Security-Policy: sandbox). Verify it against GET /records/{id}/document,"
+                    + " whose bytes it is bound to.")
+    @APIResponse(responseCode = "200", description = "The attachment, as uploaded")
+    @APIResponse(
+            responseCode = "404",
+            description = "No record for this id, or no attachment of this name",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @APIResponse(
+            responseCode = "502",
+            description = "The backend answered with an error or with data the registry could not read",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @APIResponse(
+            responseCode = "503",
+            description = "The backend is unavailable; retry later",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public Response attachment(
+            @Parameter(description = "The record's id (IRI); encode it when calling the API directly") @PathParam("id")
+                    String id,
+            @Parameter(description = "The attachment's name") @PathParam("name") String name) {
+        RecordEnvelope stored = store.get(id).map(StoredRecord::record).orElse(null);
+        if (stored == null) return notFound("No record for id: " + id);
+        for (RecordAttachment attachment : stored.attachments()) {
+            if (attachment.name().equals(name)) {
+                // Served for download only: the uploader picks the media type,
+                // so a text/html attachment must not render on the registry's
+                // origin. A verifier reads the bytes and is unaffected.
+                return Response.ok(attachment.bytes())
+                        .type(attachment.mediaType())
+                        .header("Content-Disposition", "attachment; filename*=UTF-8''" + rfc5987(name))
+                        .header("X-Content-Type-Options", "nosniff")
+                        .header("Content-Security-Policy", "sandbox")
+                        .build();
+            }
+        }
+        return notFound("No attachment '" + name + "' on record: " + id);
     }
 
     /**
@@ -735,6 +916,91 @@ public class IngestResource {
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record SearchResponse(List<RecordResponse> records, int limit) {}
+
+    private static Response notFound(String message) {
+        return Response.status(404)
+                .type(MediaType.APPLICATION_JSON)
+                .entity(new ErrorResponse(message))
+                .build();
+    }
+
+    /** Percent-encodes a filename for {@code filename*} (RFC 5987): unreserved characters stay. */
+    private static String rfc5987(String name) {
+        StringBuilder encoded = new StringBuilder();
+        for (byte b : name.getBytes(StandardCharsets.UTF_8)) {
+            char c = (char) (b & 0xFF);
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || "-._~".indexOf(c) >= 0) {
+                encoded.append(c);
+            } else {
+                encoded.append('%').append(String.format("%02X", b & 0xFF));
+            }
+        }
+        return encoded.toString();
+    }
+
+    /** The media type without parameters, lower-cased; null when absent. */
+    private static String baseType(String contentType) {
+        if (contentType == null) return null;
+        int semicolon = contentType.indexOf(';');
+        return (semicolon < 0 ? contentType : contentType.substring(0, semicolon))
+                .trim()
+                .toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private static byte[] read(FormValue value) {
+        try (InputStream in = value.getFileItem().getInputStream()) {
+            return in.readAllBytes();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /** One uploaded attachment: its filename becomes its name, its part Content-Type its media type. */
+    private record AttachmentPart(String name, String mediaType, byte[] bytes) {
+        static AttachmentPart of(FormValue value) {
+            String name = value.getFileName();
+            if (!value.isFileItem() || name == null || name.isBlank())
+                throw new IllegalArgumentException(
+                        "Send each 'attachment' part as a file; its filename becomes the attachment's name");
+            String mediaType = value.getHeaders().getFirst("Content-Type");
+            if (mediaType == null || mediaType.isBlank())
+                throw new IllegalArgumentException("Attachment '" + name + "' has no Content-Type");
+            // Rejected here rather than on download, where an unparseable
+            // stored type could no longer be sent back.
+            MediaType.valueOf(mediaType);
+            byte[] bytes = read(value);
+            if (bytes.length == 0) throw new IllegalArgumentException("Attachment '" + name + "' is empty");
+            return new AttachmentPart(name, mediaType, bytes);
+        }
+    }
+
+    /** OpenAPI shape of the multipart submission. */
+    @Schema(name = "RecordWithAttachments")
+    public static final class RecordWithAttachments {
+        @Schema(
+                required = true,
+                type = SchemaType.STRING,
+                format = "binary",
+                description = "The record as a file part, Content-Type application/ld+json or application/json")
+        public String record;
+
+        @Schema(
+                type = SchemaType.ARRAY,
+                implementation = BinaryPart.class,
+                description = "Zero or more file parts. The filename becomes the attachment's name, the part's"
+                        + " Content-Type its media type.")
+        public List<String> attachment;
+    }
+
+    /** OpenAPI shape of one binary file part. */
+    @Schema(name = "BinaryPart", type = SchemaType.STRING, format = "binary")
+    public static final class BinaryPart {}
+
+    /** Wire DTO listing a record's attachments and the document digest they are bound to. */
+    public record AttachmentsResponse(String qualifiedName, String sha256, List<AttachmentInfo> attachments) {}
+
+    /** Wire DTO for one attachment's metadata. */
+    public record AttachmentInfo(String name, String mediaType, int size) {}
 
     /** Wire DTO for error responses. */
     public record ErrorResponse(String message) {}
