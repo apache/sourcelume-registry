@@ -76,68 +76,6 @@ components:
       properties:
         message:
           type: string
-    FileItem:
-      type: object
-      properties:
-        inMemory:
-          type: boolean
-        file:
-          $ref: "#/components/schemas/Path"
-        fileSize:
-          type: integer
-          format: int64
-        inputStream:
-          type: string
-          format: binary
-    FileStore:
-      type: object
-      properties:
-        readOnly:
-          type: boolean
-        totalSpace:
-          type: integer
-          format: int64
-        usableSpace:
-          type: integer
-          format: int64
-        unallocatedSpace:
-          type: integer
-          format: int64
-        blockSize:
-          type: integer
-          format: int64
-    FileSystem:
-      type: object
-      properties:
-        open:
-          type: boolean
-        readOnly:
-          type: boolean
-        separator:
-          type: string
-        rootDirectories:
-          type: array
-          items:
-            $ref: "#/components/schemas/Path"
-        fileStores:
-          type: array
-          items:
-            $ref: "#/components/schemas/FileStore"
-        userPrincipalLookupService:
-          $ref: "#/components/schemas/UserPrincipalLookupService"
-    FormValue:
-      type: object
-      properties:
-        value:
-          type: string
-        charset:
-          type: string
-        fileItem:
-          $ref: "#/components/schemas/FileItem"
-        fileName:
-          type: string
-        headers:
-          $ref: "#/components/schemas/MultivaluedMapStringString"
     IngestResponse:
       type: object
       properties:
@@ -166,37 +104,6 @@ components:
           type: string
         message:
           type: string
-    MultipartFormDataInput:
-      type: object
-      properties:
-        values:
-          type: object
-          additionalProperties:
-            type: array
-            items:
-              $ref: "#/components/schemas/FormValue"
-    MultivaluedMapStringString:
-      type: object
-      additionalProperties:
-        type: array
-        items:
-          type: string
-    Path:
-      type: object
-      properties:
-        fileSystem:
-          $ref: "#/components/schemas/FileSystem"
-        absolute:
-          type: boolean
-        root:
-          $ref: "#/components/schemas/Path"
-        fileName:
-          $ref: "#/components/schemas/Path"
-        parent:
-          $ref: "#/components/schemas/Path"
-        nameCount:
-          type: integer
-          format: int32
     RecordResponse:
       type: object
       properties:
@@ -314,8 +221,6 @@ components:
           $ref: "#/components/schemas/RecordStatus"
         lookupFailed:
           type: boolean
-    UserPrincipalLookupService:
-      type: object
     ValidationResponse:
       type: object
       properties:
@@ -909,6 +814,9 @@ paths:
       tags:
       - Records
       requestBody:
+        description: A dataset or model provenance record as JSON-LD. Records with
+          a nonblank id that fail spec validation are also accepted and stored as
+          INCOMPLETE with their validation issues.
         content:
           multipart/form-data:
             schema:
@@ -933,24 +841,21 @@ paths:
                 $ref: "#/components/examples/IncompleteRecord"
             schema:
               $ref: "#/components/schemas/RecordSubmission"
-        description: A dataset or model provenance record as JSON-LD. Records with
-          a nonblank id that fail spec validation are also accepted and stored as
-          INCOMPLETE with their validation issues.
         required: true
       responses:
-        "200":
-          description: Existing record resubmitted and stored with its new verdict
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IngestResponse"
+        "201":
+          description: New record stored with its verdict
           headers:
             Location:
               description: The record's status view
               schema:
                 type: string
-        "201":
-          description: New record stored with its verdict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestResponse"
+        "200":
+          description: Existing record resubmitted and stored with its new verdict
           headers:
             Location:
               description: The record's status view
@@ -963,8 +868,8 @@ paths:
         "400":
           description: "Not valid UTF-8, an unparseable document, or no usable id;\
             \ for multipart, also a missing or repeated record part, an unknown part,\
-            \ an attachment without a filename or Content-Type, or a duplicate attachment\
-            \ name"
+            \ an attachment without a filename or Content-Type, an empty attachment,\
+            \ or a duplicate attachment name"
           content:
             application/json:
               schema:
@@ -1215,8 +1120,9 @@ paths:
     get:
       summary: Get one file attached to a record
       description: "Returns the attachment byte-identical to the uploaded part, with\
-        \ the media type it was uploaded with. Verify it against GET /records/{id}/document,\
-        \ whose bytes it is bound to."
+        \ the media type it was uploaded with, as a download (Content-Disposition:\
+        \ attachment, nosniff, Content-Security-Policy: sandbox). Verify it against\
+        \ GET /records/{id}/document, whose bytes it is bound to."
       tags:
       - Records
       parameters:

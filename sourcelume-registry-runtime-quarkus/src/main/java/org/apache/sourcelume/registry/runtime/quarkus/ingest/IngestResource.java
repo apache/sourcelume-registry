@@ -98,18 +98,6 @@ public class IngestResource {
 
     private static final Logger log = LoggerFactory.getLogger(IngestResource.class);
 
-    // Shared by both POST /records methods: OpenAPI merges them into one
-    // operation, and either method's annotations may end up describing it.
-    private static final String SUBMIT_SUMMARY = "Submit a provenance record";
-    private static final String SUBMIT_DESCRIPTION =
-            "Validates the record synchronously and stores it byte-identical with its verdict:"
-                    + " VALIDATED (published, no longer changeable) or INCOMPLETE (carries its issues,"
-                    + " corrected by resubmitting). As multipart/form-data, the record comes with attached"
-                    + " files, such as a detached signature, stored next to it and bound to its exact bytes:"
-                    + " a resubmission of an INCOMPLETE record replaces the record and its attachments"
-                    + " together, and a VALIDATED record never changes, attachments included. The registry"
-                    + " stores attachments as opaque bytes and does not verify them.";
-
     private final RecordStore store;
     private final RecordSearch search;
     private final IngestService ingestService;
@@ -270,7 +258,15 @@ public class IngestResource {
     @POST
     @Consumes({MediaType.APPLICATION_JSON, "application/ld+json"})
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(summary = SUBMIT_SUMMARY, description = SUBMIT_DESCRIPTION)
+    @Operation(
+            summary = "Submit a provenance record",
+            description = "Validates the record synchronously and stores it byte-identical with its verdict:"
+                    + " VALIDATED (published, no longer changeable) or INCOMPLETE (carries its issues,"
+                    + " corrected by resubmitting). As multipart/form-data, the record comes with attached"
+                    + " files, such as a detached signature, stored next to it and bound to its exact bytes:"
+                    + " a resubmission of an INCOMPLETE record replaces the record and its attachments"
+                    + " together, and a VALIDATED record never changes, attachments included. The registry"
+                    + " stores attachments as opaque bytes and does not verify them.")
     @RequestBody(
             required = true,
             description = "A dataset or model provenance record as JSON-LD. Records with a nonblank id that fail"
@@ -318,7 +314,7 @@ public class IngestResource {
             responseCode = "400",
             description = "Not valid UTF-8, an unparseable document, or no usable id; for multipart, also a"
                     + " missing or repeated record part, an unknown part, an attachment without a filename"
-                    + " or Content-Type, or a duplicate attachment name",
+                    + " or Content-Type, an empty attachment, or a duplicate attachment name",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @APIResponse(
             responseCode = "409",
@@ -350,13 +346,14 @@ public class IngestResource {
     }
 
     /**
-     * The multipart form of {@code POST /records}; its request body and responses are
-     * documented on {@link #submit}, since OpenAPI merges both into one operation.
+     * The multipart form of {@code POST /records}. Hidden from OpenAPI: both methods
+     * share one operation, documented on {@link #submit}, and scanning this
+     * method's framework parameter type would add unused internal schemas.
      */
     @POST
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(summary = SUBMIT_SUMMARY, description = SUBMIT_DESCRIPTION)
+    @Operation(hidden = true)
     public Response submitWithAttachments(MultipartFormDataInput input) {
         FormValue record = null;
         List<AttachmentPart> parts = new ArrayList<>();
@@ -621,8 +618,9 @@ public class IngestResource {
     @Operation(
             summary = "Get one file attached to a record",
             description = "Returns the attachment byte-identical to the uploaded part, with the media type it"
-                    + " was uploaded with. Verify it against GET /records/{id}/document, whose bytes it is"
-                    + " bound to.")
+                    + " was uploaded with, as a download (Content-Disposition: attachment, nosniff,"
+                    + " Content-Security-Policy: sandbox). Verify it against GET /records/{id}/document,"
+                    + " whose bytes it is bound to.")
     @APIResponse(responseCode = "200", description = "The attachment, as uploaded")
     @APIResponse(
             responseCode = "404",
@@ -644,8 +642,14 @@ public class IngestResource {
         if (stored == null) return notFound("No record for id: " + id);
         for (RecordAttachment attachment : stored.attachments()) {
             if (attachment.name().equals(name)) {
+                // Served for download only: the uploader picks the media type,
+                // so a text/html attachment must not render on the registry's
+                // origin. A verifier reads the bytes and is unaffected.
                 return Response.ok(attachment.bytes())
                         .type(attachment.mediaType())
+                        .header("Content-Disposition", "attachment; filename*=UTF-8''" + rfc5987(name))
+                        .header("X-Content-Type-Options", "nosniff")
+                        .header("Content-Security-Policy", "sandbox")
                         .build();
             }
         }
@@ -920,6 +924,20 @@ public class IngestResource {
                 .build();
     }
 
+    /** Percent-encodes a filename for {@code filename*} (RFC 5987): unreserved characters stay. */
+    private static String rfc5987(String name) {
+        StringBuilder encoded = new StringBuilder();
+        for (byte b : name.getBytes(StandardCharsets.UTF_8)) {
+            char c = (char) (b & 0xFF);
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || "-._~".indexOf(c) >= 0) {
+                encoded.append(c);
+            } else {
+                encoded.append('%').append(String.format("%02X", b & 0xFF));
+            }
+        }
+        return encoded.toString();
+    }
+
     /** The media type without parameters, lower-cased; null when absent. */
     private static String baseType(String contentType) {
         if (contentType == null) return null;
@@ -950,7 +968,9 @@ public class IngestResource {
             // Rejected here rather than on download, where an unparseable
             // stored type could no longer be sent back.
             MediaType.valueOf(mediaType);
-            return new AttachmentPart(name, mediaType, read(value));
+            byte[] bytes = read(value);
+            if (bytes.length == 0) throw new IllegalArgumentException("Attachment '" + name + "' is empty");
+            return new AttachmentPart(name, mediaType, bytes);
         }
     }
 

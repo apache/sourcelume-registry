@@ -105,6 +105,9 @@ class RecordAttachmentHttpTest {
                 .then()
                 .statusCode(200)
                 .contentType(startsWith("application/jose"))
+                .header("Content-Disposition", equalTo("attachment; filename*=UTF-8''record.jws"))
+                .header("X-Content-Type-Options", equalTo("nosniff"))
+                .header("Content-Security-Policy", equalTo("sandbox"))
                 .extract()
                 .asByteArray();
         assertArrayEquals(SIGNATURE, returned);
@@ -205,6 +208,18 @@ class RecordAttachmentHttpTest {
                 .then()
                 .statusCode(400)
                 .body("message", containsString("Duplicate attachment name"));
+        withRecord(record)
+                .multiPart("attachment", "empty.jws", new byte[0], "application/jose")
+                .post("/records")
+                .then()
+                .statusCode(400)
+                .body("message", containsString("empty"));
+        // A text field loses the exact bytes the digest must cover.
+        given().multiPart("record", new String(record, StandardCharsets.UTF_8), "application/ld+json")
+                .post("/records")
+                .then()
+                .statusCode(400)
+                .body("message", containsString("as a file"));
         given().multiPart("record", "record.txt", record, "text/plain")
                 .post("/records")
                 .then()
@@ -214,6 +229,27 @@ class RecordAttachmentHttpTest {
         tooMany.post("/records").then().statusCode(413);
 
         given().urlEncodingEnabled(false).get(path(id, "/attachments")).then().statusCode(404);
+    }
+
+    @Test
+    void anHtmlAttachmentIsServedForDownloadNotRendered() {
+        String id = newId();
+        withRecord(valid(id))
+                .multiPart(
+                        "attachment",
+                        "page.html",
+                        "<script>alert(1)</script>".getBytes(StandardCharsets.UTF_8),
+                        "text/html")
+                .post("/records")
+                .then()
+                .statusCode(201);
+        given().urlEncodingEnabled(false)
+                .get(path(id, "/attachments/page.html"))
+                .then()
+                .statusCode(200)
+                .header("Content-Disposition", startsWith("attachment"))
+                .header("X-Content-Type-Options", equalTo("nosniff"))
+                .header("Content-Security-Policy", equalTo("sandbox"));
     }
 
     @Test
