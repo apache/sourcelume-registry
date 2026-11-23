@@ -77,6 +77,9 @@ public class ProvenanceRecordDto {
     @Valid
     private List<CustodyEventDto> custodyChain;
 
+    @Valid
+    private List<DistributionDto> distribution;
+
     public ProvenanceRecordDto() {}
 
     public Object getContext() {
@@ -213,6 +216,14 @@ public class ProvenanceRecordDto {
 
     public void setCustodyChain(List<CustodyEventDto> custodyChain) {
         this.custodyChain = custodyChain;
+    }
+
+    public List<DistributionDto> getDistribution() {
+        return distribution;
+    }
+
+    public void setDistribution(List<DistributionDto> distribution) {
+        this.distribution = distribution;
     }
 
     @Override

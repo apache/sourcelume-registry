@@ -66,6 +66,9 @@ public class TrainingProvenanceRecordDto {
 
     private String note;
 
+    @Valid
+    private List<DistributionDto> distribution;
+
     public TrainingProvenanceRecordDto() {}
 
     public Object getContext() {
@@ -154,6 +157,14 @@ public class TrainingProvenanceRecordDto {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public List<DistributionDto> getDistribution() {
+        return distribution;
+    }
+
+    public void setDistribution(List<DistributionDto> distribution) {
+        this.distribution = distribution;
     }
 
     @Override

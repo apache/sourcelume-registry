@@ -87,4 +87,22 @@ class CreatorDtoTest {
         assertFalse(invalidViolations.isEmpty());
         assertEquals(2, invalidViolations.size());
     }
+
+    @Test
+    void testIdIsOptionalAndRoundTrips() throws Exception {
+        CreatorDto creator = new CreatorDto("schema:Organization", "Apache Sourcelume", "originator");
+        creator.setId("did:web:example.org");
+        assertEquals("did:web:example.org", creator.getId());
+
+        String json = mapper.writeValueAsString(creator);
+        assertTrue(json.contains("did:web:example.org"));
+        CreatorDto deserialized = mapper.readValue(json, CreatorDto.class);
+        assertEquals(creator, deserialized);
+        assertEquals("did:web:example.org", deserialized.getId());
+
+        CreatorDto withoutId = new CreatorDto("schema:Organization", "Apache Sourcelume", "originator");
+        assertFalse(mapper.writeValueAsString(withoutId).contains("did:web"));
+        assertNotEquals(creator, withoutId);
+        assertTrue(validator.validate(withoutId).isEmpty());
+    }
 }

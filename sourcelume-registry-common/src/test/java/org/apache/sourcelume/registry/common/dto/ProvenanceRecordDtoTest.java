@@ -76,4 +76,30 @@ class ProvenanceRecordDtoTest {
         assertFalse(violations.isEmpty());
         assertTrue(violations.size() >= 5);
     }
+
+    @Test
+    void shouldSerializeAndDeserializeDistribution() throws Exception {
+        ProvenanceRecordDto record = new ProvenanceRecordDto();
+        record.setDistribution(List.of(new DistributionDto(
+                "https://example.org/datasets/example/part-0001.parquet",
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")));
+
+        String json = mapper.writeValueAsString(record);
+        assertTrue(json.contains("contentUrl"));
+
+        ProvenanceRecordDto deserialized = mapper.readValue(json, ProvenanceRecordDto.class);
+        assertEquals(1, deserialized.getDistribution().size());
+        assertEquals(
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                deserialized.getDistribution().get(0).getSha256());
+    }
+
+    @Test
+    void shouldCascadeValidationIntoDistributionEntries() {
+        ProvenanceRecordDto record = new ProvenanceRecordDto();
+        record.setDistribution(List.of(new DistributionDto("https://example.org/f/one", "  ")));
+
+        Set<ConstraintViolation<ProvenanceRecordDto>> violations = validator.validate(record);
+        assertTrue(violations.stream().anyMatch(v -> v.getMessage().contains("Distribution sha256")));
+    }
 }

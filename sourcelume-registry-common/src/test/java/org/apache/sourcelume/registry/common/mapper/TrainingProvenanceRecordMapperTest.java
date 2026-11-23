@@ -55,6 +55,22 @@ class TrainingProvenanceRecordMapperTest {
     }
 
     @Test
+    void mapsCreatorIdAndDistribution() throws IOException {
+        String raw = readFixture("/records/valid-training-distribution.jsonld");
+
+        TrainingProvenanceRecordDto record = TrainingProvenanceRecordMapper.map(raw);
+
+        assertEquals("did:web:example.org", record.getCreator().get(0).getId());
+        assertEquals(1, record.getDistribution().size());
+        assertEquals(
+                "https://example.org/models/distribution-model/weights.safetensors",
+                record.getDistribution().get(0).getContentUrl());
+        assertEquals(
+                "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca7",
+                record.getDistribution().get(0).getSha256());
+    }
+
+    @Test
     void mapsARecordToTheModelEntity() throws IOException {
         TrainingProvenanceRecordDto record =
                 TrainingProvenanceRecordMapper.map(readFixture("/records/valid-training-minimal.jsonld"));
