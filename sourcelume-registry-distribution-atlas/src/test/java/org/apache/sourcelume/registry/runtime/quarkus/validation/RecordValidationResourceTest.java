@@ -120,6 +120,32 @@ class RecordValidationResourceTest {
     }
 
     @Test
+    void conformingJsonLdRecordReturns200() {
+        given().contentType("application/ld+json")
+                .body(VALID_RECORD)
+                .when()
+                .post("/records/validate")
+                .then()
+                .statusCode(200)
+                .body("conforms", equalTo(true))
+                .body("issues", hasSize(0));
+    }
+
+    @Test
+    void nonConformingJsonLdRecordReturns422WithIssues() {
+        given().contentType("application/ld+json")
+                .body(MISSING_LICENSE_RECORD)
+                .when()
+                .post("/records/validate")
+                .then()
+                .statusCode(422)
+                .body("conforms", equalTo(false))
+                .body("issues.size()", is(1))
+                .body("issues[0].validatorId", equalTo("json-schema"))
+                .body("issues[0].severity", equalTo("VIOLATION"));
+    }
+
+    @Test
     void recordMissingLicenseReturns422WithIssues() {
         given().contentType(ContentType.JSON)
                 .body(MISSING_LICENSE_RECORD)
@@ -172,7 +198,7 @@ class RecordValidationResourceTest {
 
     @Test
     void requestWithoutContentTypeIsRejected() {
-        // no content type at all: the endpoint requires application/json;
+        // no content type at all: the endpoint requires application/json or application/ld+json;
         // Quarkus answers 415 before the chain sees anything
         given().when().post("/records/validate").then().statusCode(415);
     }

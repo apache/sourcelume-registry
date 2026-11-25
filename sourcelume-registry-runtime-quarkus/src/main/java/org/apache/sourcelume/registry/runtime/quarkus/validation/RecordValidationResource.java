@@ -69,7 +69,7 @@ public class RecordValidationResource {
     }
 
     @POST
-    @Consumes(MediaType.APPLICATION_JSON)
+    @Consumes({MediaType.APPLICATION_JSON, "application/ld+json"})
     @Produces(MediaType.APPLICATION_JSON)
     @Operation(
             summary = "Validate a provenance record without storing it",
@@ -78,15 +78,26 @@ public class RecordValidationResource {
             required = true,
             description = "A dataset or model provenance record as JSON-LD. Non-conforming records, including"
                     + " records without an id, return 422 with validation issues.",
-            content =
-                    @Content(
-                            schema = @Schema(ref = "#/components/schemas/RecordValidationRequest"),
-                            examples = {
-                                @ExampleObject(name = "dataset", ref = "#/components/examples/DatasetRecord"),
-                                @ExampleObject(name = "model", ref = "#/components/examples/TrainingRecord"),
-                                @ExampleObject(name = "incomplete", ref = "#/components/examples/IncompleteRecord"),
-                                @ExampleObject(name = "missingId", ref = "#/components/examples/MissingRecordId")
-                            }))
+            content = {
+                @Content(
+                        mediaType = "application/ld+json",
+                        schema = @Schema(ref = "#/components/schemas/RecordValidationRequest"),
+                        examples = {
+                            @ExampleObject(name = "dataset", ref = "#/components/examples/DatasetRecord"),
+                            @ExampleObject(name = "model", ref = "#/components/examples/TrainingRecord"),
+                            @ExampleObject(name = "incomplete", ref = "#/components/examples/IncompleteRecord"),
+                            @ExampleObject(name = "missingId", ref = "#/components/examples/MissingRecordId")
+                        }),
+                @Content(
+                        mediaType = MediaType.APPLICATION_JSON,
+                        schema = @Schema(ref = "#/components/schemas/RecordValidationRequest"),
+                        examples = {
+                            @ExampleObject(name = "dataset", ref = "#/components/examples/DatasetRecord"),
+                            @ExampleObject(name = "model", ref = "#/components/examples/TrainingRecord"),
+                            @ExampleObject(name = "incomplete", ref = "#/components/examples/IncompleteRecord"),
+                            @ExampleObject(name = "missingId", ref = "#/components/examples/MissingRecordId")
+                        })
+            })
     @APIResponse(
             responseCode = "200",
             description = "The record conforms",
