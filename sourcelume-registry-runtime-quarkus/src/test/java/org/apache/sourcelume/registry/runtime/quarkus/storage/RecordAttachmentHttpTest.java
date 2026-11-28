@@ -55,6 +55,16 @@ class RecordAttachmentHttpTest {
     /** Not UTF-8 text: a signature must come back as the exact bytes, not decoded. */
     private static final byte[] SIGNATURE = {0, 1, (byte) 0xC0, (byte) 0xFF, '\r', '\n', 42};
 
+    private static String sha256(byte[] bytes) {
+        try {
+            return java.util.HexFormat.of()
+                    .formatHex(
+                            java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static String newId() {
         return "https://sourcelume.apache.org/records/attachment-test-" + UUID.randomUUID();
     }
@@ -105,7 +115,8 @@ class RecordAttachmentHttpTest {
                 .then()
                 .statusCode(200)
                 .contentType(startsWith("application/jose"))
-                .header("Content-Disposition", equalTo("attachment; filename*=UTF-8''record.jws"))
+                .header("Content-Disposition", equalTo("attachment; filename=\"record.jws\""))
+                .header("ETag", containsString(sha256(SIGNATURE)))
                 .header("X-Content-Type-Options", equalTo("nosniff"))
                 .header("Content-Security-Policy", equalTo("sandbox"))
                 .extract()
@@ -160,6 +171,12 @@ class RecordAttachmentHttpTest {
                 .get(path(id, "/attachments"))
                 .then()
                 .body("attachments.name", contains("second.jws"));
+        // Same document bytes, different attachment: the ETag follows the attachment.
+        given().urlEncodingEnabled(false)
+                .get(path(id, "/attachments/second.jws"))
+                .then()
+                .statusCode(200)
+                .header("ETag", containsString(sha256(new byte[] {7})));
 
         // A plain JSON-LD resubmission carries no attachments, so none remain
         // bound to the new bytes.
@@ -220,6 +237,14 @@ class RecordAttachmentHttpTest {
                 .then()
                 .statusCode(400)
                 .body("message", containsString("as a file"));
+        for (String name : new String[] {".", "..", "dir/x.sig", "with space.jws", "ü.jws", "x".repeat(129)}) {
+            withRecord(record)
+                    .multiPart("attachment", name, SIGNATURE, "application/jose")
+                    .post("/records")
+                    .then()
+                    .statusCode(400)
+                    .body("message", containsString("must be 1-128 characters"));
+        }
         given().multiPart("record", "record.txt", record, "text/plain")
                 .post("/records")
                 .then()

@@ -871,8 +871,9 @@ paths:
         "400":
           description: "Not valid UTF-8, an unparseable document, or no usable id;\
             \ for multipart, also a missing or repeated record part, an unknown part,\
-            \ an attachment without a filename or Content-Type, an empty attachment,\
-            \ or a duplicate attachment name"
+            \ an attachment without a filename or Content-Type, an attachment name\
+            \ outside A-Z a-z 0-9 . _ - (or '.' or '..'), an empty attachment, or\
+            \ a duplicate attachment name"
           content:
             application/json:
               schema:
@@ -1157,6 +1158,11 @@ paths:
         "200":
           description: "The attachment, as uploaded, in the media type it was uploaded\
             \ with"
+          headers:
+            ETag:
+              description: The attachment's sha256 digest
+              schema:
+                type: string
           content:
             '*/*':
               schema:

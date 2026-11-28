@@ -316,7 +316,8 @@ public class IngestResource {
             responseCode = "400",
             description = "Not valid UTF-8, an unparseable document, or no usable id; for multipart, also a"
                     + " missing or repeated record part, an unknown part, an attachment without a filename"
-                    + " or Content-Type, an empty attachment, or a duplicate attachment name",
+                    + " or Content-Type, an attachment name outside A-Z a-z 0-9 . _ - (or '.' or '..'), an empty"
+                    + " attachment, or a duplicate attachment name",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @APIResponse(
             responseCode = "409",
@@ -644,6 +645,11 @@ public class IngestResource {
     @APIResponse(
             responseCode = "200",
             description = "The attachment, as uploaded, in the media type it was uploaded with",
+            headers =
+                    @Header(
+                            name = "ETag",
+                            description = "The attachment's sha256 digest",
+                            schema = @Schema(type = SchemaType.STRING)),
             content = @Content(mediaType = "*/*", schema = @Schema(type = SchemaType.STRING, format = "binary")))
     @APIResponse(
             responseCode = "404",
@@ -677,9 +683,12 @@ public class IngestResource {
                 // Served for download only: the uploader picks the media type,
                 // so a text/html attachment must not render on the registry's
                 // origin. A verifier reads the bytes and is unaffected.
+                // The attachment's own digest: a resubmission of an INCOMPLETE
+                // record can keep the document bytes and change the attachment.
                 return Response.ok(attachment.bytes())
                         .type(attachment.mediaType())
-                        .header("Content-Disposition", "attachment; filename*=UTF-8''" + rfc5987(name))
+                        .tag(sha256(attachment.bytes()))
+                        .header("Content-Disposition", "attachment; filename=\"" + name + "\"")
                         .header("X-Content-Type-Options", "nosniff")
                         .header("Content-Security-Policy", "sandbox")
                         .build();
@@ -956,18 +965,14 @@ public class IngestResource {
                 .build();
     }
 
-    /** Percent-encodes a filename for {@code filename*} (RFC 5987): unreserved characters stay. */
-    private static String rfc5987(String name) {
-        StringBuilder encoded = new StringBuilder();
-        for (byte b : name.getBytes(StandardCharsets.UTF_8)) {
-            char c = (char) (b & 0xFF);
-            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || "-._~".indexOf(c) >= 0) {
-                encoded.append(c);
-            } else {
-                encoded.append('%').append(String.format("%02X", b & 0xFF));
-            }
+    private static String sha256(byte[] bytes) {
+        try {
+            return java.util.HexFormat.of()
+                    .formatHex(
+                            java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
         }
-        return encoded.toString();
     }
 
     /** The media type without parameters, lower-cased; null when absent. */
@@ -1005,12 +1010,20 @@ public class IngestResource {
 
     /** One uploaded attachment: its filename becomes its name, its part Content-Type its media type. */
     private record AttachmentPart(String name, String mediaType, byte[] bytes) {
+        private static final java.util.regex.Pattern NAME = java.util.regex.Pattern.compile("[A-Za-z0-9._-]{1,128}");
+
         /** Validates the part's name and media type without reading its content. */
         static void check(FormValue value) {
             String name = value.getFileName();
             if (!value.isFileItem() || name == null || name.isBlank())
                 throw new IllegalArgumentException(
                         "Send each 'attachment' part as a file; its filename becomes the attachment's name");
+            // The name becomes a URL path segment: '.' and '..' would be read as
+            // dot-segments and could never be fetched, and other characters
+            // would need encoding.
+            if (!NAME.matcher(name).matches() || name.equals(".") || name.equals(".."))
+                throw new IllegalArgumentException("Attachment name '" + name
+                        + "' must be 1-128 characters of A-Z, a-z, 0-9, '.', '_' and '-', and not '.' or '..'");
             String mediaType = value.getHeaders().getFirst("Content-Type");
             if (mediaType == null || mediaType.isBlank())
                 throw new IllegalArgumentException("Attachment '" + name + "' has no Content-Type");
