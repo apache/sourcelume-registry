@@ -1,0 +1,36 @@
+{
+  "@context": "https://sourcelume.apache.org/context/0.0.1/sourcelume.jsonld",
+  "id": "https://sourcelume.apache.org/records/distribution-example",
+  "type": "ProvenanceRecord",
+  "identifier": "https://example.org/datasets/distribution-example",
+  "name": "Distribution example record",
+  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+  "creator": [
+    {
+      "type": "schema:Organization",
+      "name": "Example Organization",
+      "id": "did:web:example.org"
+    }
+  ],
+  "created": "2026-11-13T00:00:00Z",
+  "added": "2026-11-13T00:00:00Z",
+  "contentCreated": "2026-11-13T00:00:00Z",
+  "origin": "A conformant ProvenanceRecord carrying the optional creator id and distribution file digests.",
+  "custodyChain": [
+    {
+      "agent": "https://example.org/",
+      "action": "created",
+      "startTime": "2026-11-13T00:00:00Z"
+    }
+  ],
+  "distribution": [
+    {
+      "contentUrl": "https://example.org/datasets/distribution-example/part-0001.parquet",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "contentUrl": "https://example.org/datasets/distribution-example/part-0002.parquet",
+      "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    }
+  ]
+}

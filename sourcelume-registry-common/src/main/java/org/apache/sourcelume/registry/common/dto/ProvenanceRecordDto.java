@@ -16,6 +16,7 @@
  */
 package org.apache.sourcelume.registry.common.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -76,6 +77,10 @@ public class ProvenanceRecordDto {
     @NotEmpty(message = "At least one custodyChain event is required")
     @Valid
     private List<CustodyEventDto> custodyChain;
+
+    @Valid
+    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    private List<DistributionDto> distribution;
 
     public ProvenanceRecordDto() {}
 
@@ -213,6 +218,14 @@ public class ProvenanceRecordDto {
 
     public void setCustodyChain(List<CustodyEventDto> custodyChain) {
         this.custodyChain = custodyChain;
+    }
+
+    public List<DistributionDto> getDistribution() {
+        return distribution;
+    }
+
+    public void setDistribution(List<DistributionDto> distribution) {
+        this.distribution = distribution;
     }
 
     @Override

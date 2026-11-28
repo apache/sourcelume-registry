@@ -22,7 +22,10 @@ import jakarta.validation.constraints.NotBlank;
 import java.util.Objects;
 
 /**
- * Represents a creator or contributor (Person or Organization) attached to a ProvenanceRecord.
+ * Represents a creator or contributor (Person or Organization) attached to a
+ * ProvenanceRecord. The optional {@code id} IRI identifies the party itself —
+ * never a Sourcelume record — so an attestation signature can be matched to
+ * who made the claim.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -33,6 +36,8 @@ public class CreatorDto {
 
     @NotBlank(message = "Creator name is required")
     private String name;
+
+    private String id;
 
     private String role;
 
@@ -60,6 +65,14 @@ public class CreatorDto {
         this.name = name;
     }
 
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
     public String getRole() {
         return role;
     }
@@ -73,16 +86,23 @@ public class CreatorDto {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         CreatorDto that = (CreatorDto) o;
-        return Objects.equals(type, that.type) && Objects.equals(name, that.name) && Objects.equals(role, that.role);
+        return Objects.equals(type, that.type)
+                && Objects.equals(name, that.name)
+                && Objects.equals(id, that.id)
+                && Objects.equals(role, that.role);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(type, name, role);
+        return Objects.hash(type, name, id, role);
     }
 
     @Override
     public String toString() {
-        return "CreatorDto{" + "type='" + type + '\'' + ", name='" + name + '\'' + ", role='" + role + '\'' + '}';
+        return "CreatorDto{" + "type='"
+                + type + '\'' + ", name='"
+                + name + '\'' + ", id='"
+                + id + '\'' + ", role='"
+                + role + '\'' + '}';
     }
 }

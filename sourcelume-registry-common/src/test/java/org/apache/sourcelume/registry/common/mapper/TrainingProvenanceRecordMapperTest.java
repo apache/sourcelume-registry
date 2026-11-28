@@ -55,6 +55,54 @@ class TrainingProvenanceRecordMapperTest {
     }
 
     @Test
+    void mapsCreatorIdAndDistribution() throws IOException {
+        String raw = readFixture("/records/valid-training-distribution.jsonld");
+
+        TrainingProvenanceRecordDto record = TrainingProvenanceRecordMapper.map(raw);
+
+        assertEquals("did:web:example.org", record.getCreator().get(0).getId());
+        assertEquals(1, record.getDistribution().size());
+        assertEquals(
+                "https://example.org/models/distribution-model/weights.safetensors",
+                record.getDistribution().get(0).getContentUrl());
+        assertEquals(
+                "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca7",
+                record.getDistribution().get(0).getSha256());
+    }
+
+    @Test
+    void mapsSingleObjectDistribution() {
+        String raw =
+                """
+                {
+                  "@context": "https://sourcelume.apache.org/context/0.0.1/sourcelume.jsonld",
+                  "id": "https://sourcelume.apache.org/records/training-single-distribution",
+                  "type": "TrainingProvenanceRecord",
+                  "identifier": "https://example.org/models/single-distribution",
+                  "name": "Single distribution model",
+                  "version": "v1",
+                  "disclosure": "undisclosed",
+                  "creator": [{"type": "schema:Organization", "name": "Example Organization"}],
+                  "created": "2026-10-03T00:00:00Z",
+                  "distribution": {
+                    "contentUrl": "https://example.org/models/single/weights.safetensors",
+                    "sha256": "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca7"
+                  }
+                }
+                """;
+
+        TrainingProvenanceRecordDto record = TrainingProvenanceRecordMapper.map(raw);
+
+        assertEquals(1, record.getDistribution().size());
+        assertEquals(
+                "https://example.org/models/single/weights.safetensors",
+                record.getDistribution().get(0).getContentUrl());
+        assertEquals(
+                "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca7",
+                record.getDistribution().get(0).getSha256());
+    }
+
+    @Test
     void mapsARecordToTheModelEntity() throws IOException {
         TrainingProvenanceRecordDto record =
                 TrainingProvenanceRecordMapper.map(readFixture("/records/valid-training-minimal.jsonld"));

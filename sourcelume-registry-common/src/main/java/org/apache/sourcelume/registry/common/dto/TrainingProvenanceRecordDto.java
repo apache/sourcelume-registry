@@ -16,6 +16,7 @@
  */
 package org.apache.sourcelume.registry.common.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -65,6 +66,10 @@ public class TrainingProvenanceRecordDto {
     private List<TrainingDataEntryDto> trainingData;
 
     private String note;
+
+    @Valid
+    @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    private List<DistributionDto> distribution;
 
     public TrainingProvenanceRecordDto() {}
 
@@ -154,6 +159,14 @@ public class TrainingProvenanceRecordDto {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public List<DistributionDto> getDistribution() {
+        return distribution;
+    }
+
+    public void setDistribution(List<DistributionDto> distribution) {
+        this.distribution = distribution;
     }
 
     @Override

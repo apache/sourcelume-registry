@@ -179,4 +179,56 @@ class IngestResourceHttpTest {
                 .body("validatedBy", equalTo(verdict.getString("validatedBy")))
                 .body("validatedAt", equalTo(verdict.getString("validatedAt")));
     }
+
+    @Test
+    void acceptsAndReadsRecordWithSingleObjectDistribution() {
+        String id = "https://sourcelume.apache.org/records/http-single-distribution-" + UUID.randomUUID();
+        String body =
+                """
+                {
+                  "@context": "https://sourcelume.apache.org/context/0.0.1/sourcelume.jsonld",
+                  "id": "%s",
+                  "type": "ProvenanceRecord",
+                  "identifier": "https://example.org/datasets/single-distribution",
+                  "name": "Single distribution record",
+                  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+                  "creator": [{"type": "schema:Organization", "name": "Example Organization"}],
+                  "created": "2026-10-03T00:00:00Z",
+                  "added": "2026-10-03T00:00:00Z",
+                  "contentCreated": "2026-10-03T00:00:00Z",
+                  "origin": "Single object distribution.",
+                  "custodyChain": [
+                    {"agent": "https://example.org/", "action": "created", "startTime": "2026-10-03T00:00:00Z"}
+                  ],
+                  "distribution": {
+                    "contentUrl": "https://example.org/datasets/single/part-0001.parquet",
+                    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                  }
+                }
+                """
+                        .formatted(id);
+
+        given().contentType(ContentType.JSON)
+                .body(body)
+                .when()
+                .post("/records/validate")
+                .then()
+                .statusCode(200)
+                .body("conforms", equalTo(true));
+
+        given().contentType("application/ld+json")
+                .body(body)
+                .when()
+                .post("/records")
+                .then()
+                .statusCode(201)
+                .body("recordStatus", equalTo("VALIDATED"));
+
+        given().urlEncodingEnabled(false)
+                .when()
+                .get("/records/" + URLEncoder.encode(id, StandardCharsets.UTF_8))
+                .then()
+                .statusCode(200)
+                .body("recordStatus", equalTo("VALIDATED"));
+    }
 }

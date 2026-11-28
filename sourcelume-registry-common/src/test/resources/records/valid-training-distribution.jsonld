@@ -1,0 +1,29 @@
+{
+  "@context": "https://sourcelume.apache.org/context/0.0.1/sourcelume.jsonld",
+  "id": "https://sourcelume.apache.org/records/training-distribution",
+  "type": "TrainingProvenanceRecord",
+  "identifier": "https://example.org/models/distribution-model",
+  "name": "Distribution model",
+  "version": "v1",
+  "creator": [
+    {
+      "type": "schema:Organization",
+      "name": "Example Organization",
+      "id": "did:web:example.org"
+    }
+  ],
+  "created": "2026-11-13T00:00:00Z",
+  "disclosure": "complete",
+  "trainingData": [
+    {
+      "dataset": "https://sourcelume.apache.org/records/distribution-example",
+      "phase": "pretraining"
+    }
+  ],
+  "distribution": [
+    {
+      "contentUrl": "https://example.org/models/distribution-model/weights.safetensors",
+      "sha256": "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca7"
+    }
+  ]
+}

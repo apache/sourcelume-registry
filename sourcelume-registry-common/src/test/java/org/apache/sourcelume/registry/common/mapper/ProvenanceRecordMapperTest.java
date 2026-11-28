@@ -54,6 +54,59 @@ class ProvenanceRecordMapperTest {
     }
 
     @Test
+    void mapsCreatorIdAndDistribution() throws IOException {
+        String raw = readFixture("/records/valid-distribution.jsonld");
+
+        ProvenanceRecordDto record = ProvenanceRecordMapper.map(raw);
+
+        assertEquals("did:web:example.org", record.getCreator().get(0).getId());
+        assertEquals(2, record.getDistribution().size());
+        assertEquals(
+                "https://example.org/datasets/distribution-example/part-0001.parquet",
+                record.getDistribution().get(0).getContentUrl());
+        assertEquals(
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                record.getDistribution().get(0).getSha256());
+    }
+
+    @Test
+    void mapsSingleObjectDistribution() {
+        String raw =
+                """
+                {
+                  "@context": "https://sourcelume.apache.org/context/0.0.1/sourcelume.jsonld",
+                  "id": "https://sourcelume.apache.org/records/single-distribution",
+                  "type": "ProvenanceRecord",
+                  "identifier": "https://example.org/datasets/single-distribution",
+                  "name": "Single distribution record",
+                  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+                  "creator": [{"type": "schema:Organization", "name": "Example Organization"}],
+                  "created": "2026-10-03T00:00:00Z",
+                  "added": "2026-10-03T00:00:00Z",
+                  "contentCreated": "2026-10-03T00:00:00Z",
+                  "origin": "Single object distribution.",
+                  "custodyChain": [
+                    {"agent": "https://example.org/", "action": "created", "startTime": "2026-10-03T00:00:00Z"}
+                  ],
+                  "distribution": {
+                    "contentUrl": "https://example.org/datasets/single/part-0001.parquet",
+                    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                  }
+                }
+                """;
+
+        ProvenanceRecordDto record = ProvenanceRecordMapper.map(raw);
+
+        assertEquals(1, record.getDistribution().size());
+        assertEquals(
+                "https://example.org/datasets/single/part-0001.parquet",
+                record.getDistribution().get(0).getContentUrl());
+        assertEquals(
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                record.getDistribution().get(0).getSha256());
+    }
+
+    @Test
     void rejectsMalformedJson() {
         SourcelumeValidationException exception =
                 assertThrows(SourcelumeValidationException.class, () -> ProvenanceRecordMapper.map("not json"));
