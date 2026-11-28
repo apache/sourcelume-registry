@@ -227,6 +227,19 @@ class RecordAttachmentHttpTest {
         var tooMany = withRecord(record);
         for (int i = 0; i < 17; i++) tooMany.multiPart("attachment", "sig-" + i, new byte[] {1}, "application/jose");
         tooMany.post("/records").then().statusCode(413);
+        // Checked on the uploaded sizes, before the content is read.
+        withRecord(record)
+                .multiPart("attachment", "a.jws", new byte[600 * 1024], "application/jose")
+                .multiPart("attachment", "b.jws", new byte[600 * 1024], "application/jose")
+                .post("/records")
+                .then()
+                .statusCode(413);
+        byte[] oversized = new byte[4 * 1024 * 1024 + 1];
+        java.util.Arrays.fill(oversized, (byte) ' ');
+        given().multiPart("record", "record.jsonld", oversized, "application/ld+json")
+                .post("/records")
+                .then()
+                .statusCode(413);
 
         given().urlEncodingEnabled(false).get(path(id, "/attachments")).then().statusCode(404);
     }

@@ -821,6 +821,9 @@ paths:
           multipart/form-data:
             schema:
               $ref: "#/components/schemas/RecordWithAttachments"
+            encoding:
+              record:
+                contentType: "application/ld+json, application/json"
           application/ld+json:
             examples:
               dataset:
@@ -1140,20 +1143,32 @@ paths:
           type: string
       responses:
         "200":
-          description: "The attachment, as uploaded"
+          description: "The attachment, as uploaded, in the media type it was uploaded\
+            \ with"
           content:
-            application/json:
-              schema: {}
+            '*/*':
+              schema:
+                type: string
+                format: binary
         "404":
           description: "No record for this id, or no attachment of this name"
-          content: {}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: The backend answered with an error or with data the registry
             could not read
-          content: {}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: The backend is unavailable; retry later
-          content: {}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /records/{id}/document:
     get:
       summary: Get the record's stored document

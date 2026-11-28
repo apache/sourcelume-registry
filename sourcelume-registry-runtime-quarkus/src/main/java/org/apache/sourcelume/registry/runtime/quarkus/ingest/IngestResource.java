@@ -57,6 +57,7 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.headers.Header;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Encoding;
 import org.eclipse.microprofile.openapi.annotations.media.ExampleObject;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
@@ -274,7 +275,8 @@ public class IngestResource {
             content = {
                 @Content(
                         mediaType = MediaType.MULTIPART_FORM_DATA,
-                        schema = @Schema(implementation = RecordWithAttachments.class)),
+                        schema = @Schema(implementation = RecordWithAttachments.class),
+                        encoding = @Encoding(name = "record", contentType = "application/ld+json, application/json")),
                 @Content(
                         mediaType = "application/ld+json",
                         schema = @Schema(ref = "#/components/schemas/RecordSubmission"),
@@ -356,7 +358,7 @@ public class IngestResource {
     @Operation(hidden = true)
     public Response submitWithAttachments(MultipartFormDataInput input) {
         FormValue record = null;
-        List<AttachmentPart> parts = new ArrayList<>();
+        List<FormValue> attachmentValues = new ArrayList<>();
         try {
             for (Map.Entry<String, java.util.Collection<FormValue>> entry :
                     input.getValues().entrySet()) {
@@ -366,7 +368,10 @@ public class IngestResource {
                         record = entry.getValue().iterator().next();
                     }
                     case "attachment" -> {
-                        for (FormValue value : entry.getValue()) parts.add(AttachmentPart.of(value));
+                        for (FormValue value : entry.getValue()) {
+                            AttachmentPart.check(value);
+                            attachmentValues.add(value);
+                        }
                     }
                     // An unknown part is rejected rather than dropped, so a
                     // misspelled 'attachment' cannot lose a signature silently.
@@ -389,6 +394,25 @@ public class IngestResource {
                     .type(MediaType.APPLICATION_JSON)
                     .entity(new ErrorResponse("The 'record' part must be application/ld+json or application/json"))
                     .build();
+        }
+        // Checked on the sizes the upload already knows, before any content is
+        // read into memory; accept() checks the read bytes again.
+        StoreLimits limits = store.limits();
+        if (fileSize(record) > limits.maxDocumentBytes()) {
+            return Response.status(413)
+                    .entity(new ErrorResponse("Document exceeds the storage size limit"))
+                    .build();
+        }
+        long declared = 0;
+        for (FormValue value : attachmentValues) declared += fileSize(value);
+        if (attachmentValues.size() > limits.maxAttachments() || declared > limits.maxAttachmentBytes()) {
+            return attachmentsTooLarge(limits);
+        }
+        List<AttachmentPart> parts = new ArrayList<>();
+        try {
+            for (FormValue value : attachmentValues) parts.add(AttachmentPart.of(value));
+        } catch (IllegalArgumentException e) {
+            return badRequest(e.getMessage());
         }
         return accept(read(record), parts);
     }
@@ -421,11 +445,7 @@ public class IngestResource {
         long attachmentBytes =
                 parts.stream().mapToLong(part -> part.bytes().length).sum();
         if (parts.size() > limits.maxAttachments() || attachmentBytes > limits.maxAttachmentBytes()) {
-            return Response.status(413)
-                    .entity(new ErrorResponse("Attachments exceed the storage limits: at most "
-                            + limits.maxAttachments() + " files, " + limits.maxAttachmentBytes()
-                            + " bytes in total"))
-                    .build();
+            return attachmentsTooLarge(limits);
         }
         RawDocument document = RawDocument.builder().bytes(received).build();
         List<RecordAttachment> attachments = new ArrayList<>();
@@ -621,19 +641,31 @@ public class IngestResource {
                     + " was uploaded with, as a download (Content-Disposition: attachment, nosniff,"
                     + " Content-Security-Policy: sandbox). Verify it against GET /records/{id}/document,"
                     + " whose bytes it is bound to.")
-    @APIResponse(responseCode = "200", description = "The attachment, as uploaded")
+    @APIResponse(
+            responseCode = "200",
+            description = "The attachment, as uploaded, in the media type it was uploaded with",
+            content = @Content(mediaType = "*/*", schema = @Schema(type = SchemaType.STRING, format = "binary")))
     @APIResponse(
             responseCode = "404",
             description = "No record for this id, or no attachment of this name",
-            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+            content =
+                    @Content(
+                            mediaType = MediaType.APPLICATION_JSON,
+                            schema = @Schema(implementation = ErrorResponse.class)))
     @APIResponse(
             responseCode = "502",
             description = "The backend answered with an error or with data the registry could not read",
-            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+            content =
+                    @Content(
+                            mediaType = MediaType.APPLICATION_JSON,
+                            schema = @Schema(implementation = ErrorResponse.class)))
     @APIResponse(
             responseCode = "503",
             description = "The backend is unavailable; retry later",
-            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+            content =
+                    @Content(
+                            mediaType = MediaType.APPLICATION_JSON,
+                            schema = @Schema(implementation = ErrorResponse.class)))
     public Response attachment(
             @Parameter(description = "The record's id (IRI); encode it when calling the API directly") @PathParam("id")
                     String id,
@@ -947,6 +979,22 @@ public class IngestResource {
                 .toLowerCase(java.util.Locale.ROOT);
     }
 
+    private static Response attachmentsTooLarge(StoreLimits limits) {
+        return Response.status(413)
+                .entity(new ErrorResponse("Attachments exceed the storage limits: at most "
+                        + limits.maxAttachments() + " files, " + limits.maxAttachmentBytes()
+                        + " bytes in total"))
+                .build();
+    }
+
+    private static long fileSize(FormValue value) {
+        try {
+            return value.getFileItem().getFileSize();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     private static byte[] read(FormValue value) {
         try (InputStream in = value.getFileItem().getInputStream()) {
             return in.readAllBytes();
@@ -957,7 +1005,8 @@ public class IngestResource {
 
     /** One uploaded attachment: its filename becomes its name, its part Content-Type its media type. */
     private record AttachmentPart(String name, String mediaType, byte[] bytes) {
-        static AttachmentPart of(FormValue value) {
+        /** Validates the part's name and media type without reading its content. */
+        static void check(FormValue value) {
             String name = value.getFileName();
             if (!value.isFileItem() || name == null || name.isBlank())
                 throw new IllegalArgumentException(
@@ -968,6 +1017,12 @@ public class IngestResource {
             // Rejected here rather than on download, where an unparseable
             // stored type could no longer be sent back.
             MediaType.valueOf(mediaType);
+        }
+
+        static AttachmentPart of(FormValue value) {
+            check(value);
+            String name = value.getFileName();
+            String mediaType = value.getHeaders().getFirst("Content-Type");
             byte[] bytes = read(value);
             if (bytes.length == 0) throw new IllegalArgumentException("Attachment '" + name + "' is empty");
             return new AttachmentPart(name, mediaType, bytes);

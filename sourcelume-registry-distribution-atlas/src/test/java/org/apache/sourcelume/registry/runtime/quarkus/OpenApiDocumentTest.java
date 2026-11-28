@@ -206,6 +206,40 @@ class OpenApiDocumentTest {
     }
 
     @Test
+    void shouldDescribeAttachmentsByTheirMediaTypes() throws IOException {
+        JsonNode document = openApiDocument();
+        assertEquals(
+                "application/ld+json, application/json",
+                document.path("paths")
+                        .path("/records")
+                        .path("post")
+                        .path("requestBody")
+                        .path("content")
+                        .path("multipart/form-data")
+                        .path("encoding")
+                        .path("record")
+                        .path("contentType")
+                        .asText());
+        // The download answers in the uploaded media type, so the contract must
+        // not promise JSON a client would try to parse.
+        JsonNode download = document.path("paths")
+                .path("/records/{id}/attachments/{name}")
+                .path("get")
+                .path("responses")
+                .path("200")
+                .path("content");
+        assertEquals(List.of("*/*"), iterable(download.fieldNames()));
+        assertEquals(
+                "binary", download.path("*/*").path("schema").path("format").asText());
+    }
+
+    private static List<String> iterable(java.util.Iterator<String> names) {
+        List<String> list = new java.util.ArrayList<>();
+        names.forEachRemaining(list::add);
+        return list;
+    }
+
+    @Test
     void shouldDescribeDatasetsAsReadOnlyViews() throws IOException {
         JsonNode document = openApiDocument();
         for (String path :
