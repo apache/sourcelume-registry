@@ -1003,6 +1003,18 @@ paths:
         description: "A dataset or model provenance record as JSON-LD. Non-conforming\
           \ records, including records without an id, return 422 with validation issues."
         content:
+          application/ld+json:
+            examples:
+              dataset:
+                $ref: "#/components/examples/DatasetRecord"
+              model:
+                $ref: "#/components/examples/TrainingRecord"
+              incomplete:
+                $ref: "#/components/examples/IncompleteRecord"
+              missingId:
+                $ref: "#/components/examples/MissingRecordId"
+            schema:
+              $ref: "#/components/schemas/RecordValidationRequest"
           application/json:
             examples:
               dataset:
