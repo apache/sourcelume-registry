@@ -93,7 +93,16 @@ class OpenApiDocumentTest {
                     .path("post")
                     .path("requestBody")
                     .path("content");
+            if (submission) {
+                assertEquals(
+                        "#/components/schemas/RecordWithAttachments",
+                        content.path("multipart/form-data")
+                                .path("schema")
+                                .path("$ref")
+                                .asText());
+            }
             for (JsonNode media : content) {
+                if (media == content.get("multipart/form-data")) continue;
                 assertEquals(
                         "#/components/schemas/" + (submission ? "RecordSubmission" : "RecordValidationRequest"),
                         media.path("schema").path("$ref").asText());
@@ -194,6 +203,40 @@ class OpenApiDocumentTest {
         JsonNode resolved = document.at(ref.substring(1));
         assertTrue(resolved.has("value"), "Unresolved example: " + ref);
         return resolved.path("value");
+    }
+
+    @Test
+    void shouldDescribeAttachmentsByTheirMediaTypes() throws IOException {
+        JsonNode document = openApiDocument();
+        assertEquals(
+                "application/ld+json, application/json",
+                document.path("paths")
+                        .path("/records")
+                        .path("post")
+                        .path("requestBody")
+                        .path("content")
+                        .path("multipart/form-data")
+                        .path("encoding")
+                        .path("record")
+                        .path("contentType")
+                        .asText());
+        // The download answers in the uploaded media type, so the contract must
+        // not promise JSON a client would try to parse.
+        JsonNode download = document.path("paths")
+                .path("/records/{id}/attachments/{name}")
+                .path("get")
+                .path("responses")
+                .path("200")
+                .path("content");
+        assertEquals(List.of("*/*"), iterable(download.fieldNames()));
+        assertEquals(
+                "binary", download.path("*/*").path("schema").path("format").asText());
+    }
+
+    private static List<String> iterable(java.util.Iterator<String> names) {
+        List<String> list = new java.util.ArrayList<>();
+        names.forEachRemaining(list::add);
+        return list;
     }
 
     @Test

@@ -108,9 +108,9 @@ and the existing Atlas catalog views, not an SPI for other metadata systems.
    The Atlas implementation registers its own typedefs. Initialization is idempotent;
    failed initialization leaves readiness down after the retry budget is exhausted.
 5. HTTP and Core receive `RecordStore` and `RecordSearch` from that plugin instance.
-   `POST /records`, `GET /records`, `GET /records/{id}` and
-   `GET /records/{id}/document` run on that pair, so they behave identically on
-   every backend. Readiness checks the selected plugin, including its
+   `POST /records`, `GET /records`, `GET /records/{id}`,
+   `GET /records/{id}/document` and the attachment routes run on that pair, so
+   they behave identically on every backend. Readiness checks the selected plugin, including its
    initialization state.
 6. The runtime disposes the plugin on shutdown. `close()` is idempotent and prevents
    new storage operations. The Atlas transport shuts down its HTTP client.
@@ -238,10 +238,11 @@ mutations must never produce a successful `WriteResult`.
 `IngestResource` handles HTTP parsing and response construction.
 `DefaultIngestService.process(RecordSubmission)` is the common Java entry point
 for validation and storage. `RecordSubmission` supplies the `RawDocument`,
-optional `expectedRevision`, and attachments. The existing HTTP submission route
-continues to accept a raw JSON-LD document with no attachment envelope.
-Java callers can supply attachments through `RecordSubmission` and retrieve them
-through `RecordStore.get`; their HTTP submission/retrieval format remains separate.
+optional `expectedRevision`, and attachments. `POST /records` accepts a raw
+JSON-LD document, or a `multipart/form-data` body that adds attachments; both
+reach `process` the same way. `GET /records/{id}/attachments` and
+`GET /records/{id}/attachments/{name}` return them from `RecordStore.get`. See
+[docs/ingest.md](ingest.md#rest-semantics) for the HTTP format.
 
 ```mermaid
 sequenceDiagram
@@ -293,6 +294,7 @@ such, because a client cannot tell from the URL alone.
 | `GET /records` (search) | `RecordSearch` | every backend |
 | `GET /records/{id}` | `RecordStore.get`, `getAll` | every backend |
 | `GET /records/{id}/document` | `RecordStore.get` | every backend |
+| `GET /records/{id}/attachments`, `/attachments/{name}` | `RecordStore.get` | every backend |
 | `POST /records/validate` | validation chain | every backend |
 | `GET /api/v1/datasets`, `/guid/{guid}` | `AtlasAdapter` | Atlas only |
 | `GET /api/v1/types`, `/typedefs`, `/dataset`, `/model` | `AtlasAdapter` | Atlas only |
@@ -591,8 +593,10 @@ test scope and extend `RecordStoreContract` against an isolated store.
 ## Subsequent API work
 
 A summary-only search response (a lighter projection than the full stored record),
-byte-identical `UNCHANGED` submissions, attachment HTTP transport and withdrawal
-remain separate API decisions. Withdrawal must
+byte-identical `UNCHANGED` submissions and withdrawal remain separate API
+decisions. Adding an attachment to a VALIDATED record, such as a later
+countersignature, is one too: the `IMMUTABLE` rule above rejects it today.
+Withdrawal must
 specify document/attachment retention, discoverability and projection removal
 before adding a delete operation. Incompatible HTTP changes require a versioned
 contract coordinated with the Maven, Python and CMake tooling. Production DataHub

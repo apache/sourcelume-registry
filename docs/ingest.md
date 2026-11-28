@@ -122,11 +122,25 @@ An id denotes one record. Records are written only via `POST /records`; `/api/v1
 | `POST /records` for an id that is already VALIDATED or stored under another entity type | `409` — the stored record is unchanged; body: `qualifiedName`, `recordStatus` (absent for a plain dataset), `entityType` (the store holding the id), `reason` |
 | `POST /records` without a usable `@id`, unparseable, or not valid UTF-8 | `400` |
 | `POST /records` with an unsupported content type | `415` |
+| `POST /records` as `multipart/form-data`: one `record` file part (`application/ld+json` or `application/json`) and zero or more `attachment` file parts | As for the JSON-LD body; each attachment is stored with the record, its filename as name (1–128 characters of `A-Z a-z 0-9 . _ -`, not `.` or `..`) and its part `Content-Type` as media type. `400` for a missing or repeated `record` part, an unknown part, an attachment without filename or `Content-Type`, a name outside those characters, an empty attachment, or a duplicate name; `413` above the storage limits; `415` for another `record` type |
 | `GET /records?type=…&status=…` | `200` — records of that type and status as their status views; `type` and `status` are required and never defaulted; repeatable facet filters `license`, `trainingDataset`, `creatorName`, `custodyAgent` — values of one facet match any of them, different facets must all match — applied before `limit` (1–1000, default 100); `trainingData`/`custodyChain` are not resolved here (`GET /records/{id}` does that); body: `records`, `limit` / `400` — missing or unknown `type`/`status`, or a `limit` that is not an integer in range |
 | `GET /records/{id}` | `200` record view: `type`, status, the type's mapped attributes, `trainingData` with each dataset's status for a VALIDATED model record, `custodyChain` with each agent's record status for a VALIDATED dataset record, and for INCOMPLETE the issues + verdict context / `404` |
+| `GET /records/{id}/attachments` | `200` — `qualifiedName`, the document `sha256` the attachments are bound to, and `attachments` (`name`, `mediaType`, `size`; empty when none) / `404` |
+| `GET /records/{id}/attachments/{name}` | `200` — the attachment byte-identical to the upload, with its media type and its own sha256 as `ETag`, sent for download (`Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox`) so an uploaded page never renders on the registry's origin / `404` — no record, or no attachment of that name |
 | `GET /records/{id}/document` | `200` — the stored JSON-LD document, byte-identical to the submission, as `application/ld+json`; the record's `sha256` repeats as `ETag`. For any verdict, VALIDATED or INCOMPLETE / `404` — no record for the id, or the entity under it carries no document |
 | `POST /records`, a `GET` on `/records` or a `/api/v1/datasets` view when the backend can't be reached | `503` — retry later; body: `message` (`error` on `/api/v1/datasets`, like its other errors) |
 | `POST /records`, a `GET` on `/records` or a `/api/v1/datasets` view when the backend answers with an error | `502` — body as for `503`; the backend's answer is only logged |
+
+Attachments carry files that belong to the record's exact bytes, such as
+a detached signature. They are written with the record and only with it:
+a resubmission of an INCOMPLETE record replaces both, a plain JSON-LD
+resubmission leaves none, and a VALIDATED record never changes. The
+registry stores attachments as opaque bytes and does not verify them;
+consumers fetch the document and its attachments and verify with their
+own trust policy. Attachments are not the record's `distribution`: that
+field lists the files the record describes, by URL and digest, inside the
+signed document; an attachment is a file about the record itself, such as
+its signature.
 
 The `id` of the JSON-LD document doubles as the record's qualified name;
 the `Location` header of the answers points at the (URL-encoded)
